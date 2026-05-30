@@ -10,6 +10,13 @@
       .animate-fade-in { animation: fade-in 0.25s ease-out; }
       .scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
       .scrollbar-none::-webkit-scrollbar { display: none; }
+      @media (max-width: 640px) {
+        .table-mobile-scroll { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .table-mobile-scroll table { min-width: 500px; }
+        .touch-target { min-height: 44px; min-width: 44px; }
+      }
+      * { -webkit-tap-highlight-color: transparent; }
+      input, textarea, select { font-size: 16px !important; }
     </style>
   </head>
   <body>

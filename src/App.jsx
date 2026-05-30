@@ -140,6 +140,9 @@ export default function App() {
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [pendingImportData, setPendingImportData] = useState(null);
   const fileInputRef = useRef(null);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
 
   // Load Main Data
   const [data, setData] = useState(() => {
@@ -362,6 +365,34 @@ export default function App() {
     outputs: data.oneThing.length
   };
 
+  // Calendar helpers
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
+
+  const formatMonthDay = (year, month, day) => {
+    const date = new Date(year, month, day);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const getEntriesForDate = (dateStr) => {
+    const entries = [];
+    data.habits.forEach(h => { if (h.date === dateStr) entries.push({ type: 'Habit', text: h.habit }); });
+    data.deepWork.forEach(d => { if (d.date === dateStr) entries.push({ type: 'Deep Work', text: d.task }); });
+    data.oneThing.forEach(o => { if (o.date === dateStr) entries.push({ type: 'Output', text: o.moved }); });
+    data.outputLog.forEach(o => { if (o.date === dateStr) entries.push({ type: 'Output Log', text: `${o.category}: ${o.quantity}` }); });
+    data.antiDmn.forEach(a => { if (a.date === dateStr) entries.push({ type: 'DMN', text: a.trigger }); });
+    data.realityCheck.forEach(r => { if (r.date === dateStr) entries.push({ type: 'Reality Check', text: `Learned: ${r.learned || '-'} | Built: ${r.built || '-'}` }); });
+    return entries;
+  };
+
+  const hasEntriesOnDay = (year, month, day) => {
+    const dateStr = formatMonthDay(year, month, day);
+    return getEntriesForDate(dateStr).length > 0;
+  };
+
   // --- RENDERERS ---
 
   const renderExecution = () => (
@@ -390,12 +421,84 @@ export default function App() {
         </div>
       </div>
 
+      {/* Daily Calendar */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Daily Calendar</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setCalendarMonth(m => m === 0 ? 11 : m - 1); if (calendarMonth === 0) setCalendarYear(y => y - 1); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 touch-target">
+              <ChevronRight size={16} className="rotate-180" />
+            </button>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 min-w-[120px] text-center">{MONTHS[calendarMonth]} {calendarYear}</span>
+            <button onClick={() => { setCalendarMonth(m => m === 11 ? 0 : m + 1); if (calendarMonth === 11) setCalendarYear(y => y + 1); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 touch-target">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {DAYS.map(d => (
+            <div key={d} className="text-center text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase py-1">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {Array.from({ length: getFirstDayOfMonth(calendarYear, calendarMonth) }).map((_, i) => (
+            <div key={`empty-${i}`} className="aspect-square"></div>
+          ))}
+          {Array.from({ length: getDaysInMonth(calendarYear, calendarMonth) }).map((_, i) => {
+            const day = i + 1;
+            const dateStr = formatMonthDay(calendarYear, calendarMonth, day);
+            const hasEntries = hasEntriesOnDay(calendarYear, calendarMonth, day);
+            const isSelected = selectedDate === dateStr;
+            const isToday = new Date().getDate() === day && new Date().getMonth() === calendarMonth && new Date().getFullYear() === calendarYear;
+            return (
+              <button
+                key={day}
+                onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                className={`aspect-square rounded-lg flex flex-col items-center justify-center text-sm relative transition-all touch-target ${
+                  isSelected
+                    ? 'bg-blue-500 text-white font-bold shadow-md shadow-blue-500/20'
+                    : isToday
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold border border-blue-200 dark:border-blue-800'
+                    : hasEntries
+                    ? 'bg-green-50 dark:bg-green-900/20 text-gray-800 dark:text-gray-200 font-medium'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}
+              >
+                {day}
+                {hasEntries && !isSelected && (
+                  <span className="w-1 h-1 rounded-full bg-green-500 absolute bottom-1"></span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Selected Date Entries */}
+        {selectedDate && (
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
+            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Entries for {selectedDate}</h3>
+            {getEntriesForDate(selectedDate).length === 0 ? (
+              <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No entries logged for this day.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {getEntriesForDate(selectedDate).map((entry, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-xs">
+                    <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-medium shrink-0">{entry.type}</span>
+                    <span className="text-gray-700 dark:text-gray-300">{entry.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
       {/* Habits */}
-      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Section A — Daily Non-Negotiables</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500">Tap status to cycle through states: (-) Undone, (✓) Success, (✗) Failed</p>
+            <h2 className="text-base sm:text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Section A — Daily Non-Negotiables</h2>
+            <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">Tap status to cycle through states: (-) Undone, (✓) Success, (✗) Failed</p>
           </div>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -423,7 +526,7 @@ export default function App() {
                     <td className="p-3 text-center">
                       <button 
                         onClick={() => cycleHabitStatus(h.id, h.status)}
-                        className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-bold transition-all duration-200 ${statusStyles[h.status || '-']}`}
+                        className={`inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-lg font-bold transition-all duration-200 touch-target ${statusStyles[h.status || '-']}`}
                       >
                         {h.status || '-'}
                       </button>
@@ -442,7 +545,7 @@ export default function App() {
                         </button>
                         <button 
                           onClick={() => deleteItem('habits', h.id)} 
-                          className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                           title="Delete"
                         >
                           <Trash2 size={15} />
@@ -464,9 +567,9 @@ export default function App() {
       </section>
 
       {/* Deep Work */}
-      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Section B — Deep Work Sessions</h2>
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Section B — Deep Work Sessions</h2>
           <p className="text-xs text-gray-400 dark:text-gray-500">Quantifiable concentration blocks. Plan vs Actual in minutes.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -500,7 +603,7 @@ export default function App() {
                       </button>
                       <button 
                         onClick={() => deleteItem('deepWork', dw.id)} 
-                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                         title="Delete"
                       >
                         <Trash2 size={15} />
@@ -521,9 +624,9 @@ export default function App() {
       </section>
 
       {/* One Thing Moved */}
-      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Section C — "One Thing Moved" (Output Log)</h2>
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Section C — "One Thing Moved" (Output Log)</h2>
           <p className="text-xs text-gray-400 dark:text-gray-500">Strict shipping list. Write down real outputs (commits, papers solved, code compiled), not concepts read.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -551,7 +654,7 @@ export default function App() {
                       </button>
                       <button 
                         onClick={() => deleteItem('oneThing', ot.id)} 
-                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                         title="Delete"
                       >
                         <Trash2 size={15} />
@@ -576,9 +679,9 @@ export default function App() {
   const renderTechnical = () => (
     <div className="space-y-8 animate-fade-in">
       {/* DSA Section */}
-      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">DSA Subject Roadmap</h2>
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">DSA Subject Roadmap</h2>
           <p className="text-xs text-gray-400 dark:text-gray-500">Track algorithmic efficiency, optimization metrics, and weaknesses.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -609,7 +712,7 @@ export default function App() {
                       </button>
                       <button 
                         onClick={() => deleteItem('dsa', item.id)} 
-                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -629,9 +732,9 @@ export default function App() {
       </section>
 
       {/* GATE Section */}
-      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">GATE Academic Track</h2>
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">GATE Academic Track</h2>
           <p className="text-xs text-gray-400 dark:text-gray-500">Track syllabus completion & performance benchmark values.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -664,7 +767,7 @@ export default function App() {
                       </button>
                       <button 
                         onClick={() => deleteItem('gate', item.id)} 
-                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -685,9 +788,9 @@ export default function App() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* ML Frameworks */}
-        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">AI / ML Applied Progression</h2>
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">AI / ML Applied Progression</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500">Log algorithm construction and mathematical intuition.</p>
           </div>
           <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -716,7 +819,7 @@ export default function App() {
                         </button>
                         <button 
                           onClick={() => deleteItem('ml', item.id)} 
-                          className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -736,9 +839,9 @@ export default function App() {
         </section>
 
         {/* Active Repos */}
-        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Active Repositories & Products</h2>
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Active Repositories & Products</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500">Track structural components and deliverable lifecycles.</p>
           </div>
           <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -765,7 +868,7 @@ export default function App() {
                         </button>
                         <button 
                           onClick={() => deleteItem('projects', item.id)} 
-                          className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -798,9 +901,9 @@ export default function App() {
         </p>
       </div>
 
-      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">DMN Loop Interrupt Logs</h2>
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">DMN Loop Interrupt Logs</h2>
           <p className="text-xs text-gray-400 dark:text-gray-500">Log escape sequences. Keep records objective and clear.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -831,7 +934,7 @@ export default function App() {
                       </button>
                       <button 
                         onClick={() => deleteItem('antiDmn', item.id)} 
-                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -851,10 +954,10 @@ export default function App() {
       </section>
 
       {/* SOMEDAY.TXT */}
-      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="mb-4">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">SOMEDAY.TXT</h2>
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">SOMEDAY.TXT</h2>
             <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">Novelty Capture</span>
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Capture ideas here instead of starting new projects. Prevents project spirals.</p>
@@ -896,7 +999,7 @@ export default function App() {
                       </button>
                       <button 
                         onClick={() => deleteItem('someday', item.id)} 
-                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -969,8 +1072,8 @@ export default function App() {
         </div>
 
         {/* Consumption vs Production Ratio */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-3">Consumption vs Production</h2>
+        <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
+          <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 mb-3">Consumption vs Production</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 text-center">
               <span className="text-xs text-gray-400 font-medium block mb-1">Learning Hours</span>
@@ -1015,9 +1118,9 @@ export default function App() {
         )}
 
         {/* Output Log */}
-        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Output Log</h2>
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Output Log</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500">Every output is evidence. Log what you built, solved, shipped.</p>
           </div>
           <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -1053,7 +1156,7 @@ export default function App() {
                         <button onClick={() => setSelectedRecord({ section: 'outputLog', data: item, title: item.quantity || 'Output' })} className="p-1.5 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 rounded-lg transition-colors">
                           <Maximize2 size={15} />
                         </button>
-                        <button onClick={() => deleteItem('outputLog', item.id)} className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100">
+                        <button onClick={() => deleteItem('outputLog', item.id)} className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100">
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -1072,9 +1175,9 @@ export default function App() {
         </section>
 
         {/* Pivot Timeline */}
-        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Pivot Timeline</h2>
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Pivot Timeline</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500">Key decisions that changed trajectory. Mark them as they happen.</p>
           </div>
           <div className="space-y-3">
@@ -1107,9 +1210,9 @@ export default function App() {
         </section>
 
         {/* Reality Check Card */}
-        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Reality Check</h2>
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Reality Check</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500">Daily: What did I learn? What did I build? What did I finish?</p>
           </div>
           <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -1135,7 +1238,7 @@ export default function App() {
                         <button onClick={() => setSelectedRecord({ section: 'realityCheck', data: item, title: `Reality Check ${item.date}` })} className="p-1.5 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 rounded-lg transition-colors">
                           <Maximize2 size={15} />
                         </button>
-                        <button onClick={() => deleteItem('realityCheck', item.id)} className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors md:opacity-0 group-hover:opacity-100">
+                        <button onClick={() => deleteItem('realityCheck', item.id)} className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100">
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -1217,10 +1320,10 @@ export default function App() {
         </div>
 
         {/* Completed Outputs Gallery */}
-        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-6 shadow-sm">
+        <section className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/80 rounded-xl p-4 sm:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Completed Outputs</h2>
+              <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Completed Outputs</h2>
               <p className="text-xs text-gray-400 dark:text-gray-500">Visible proof of real work — commits, screenshots, graphs, PDFs, deployments.</p>
             </div>
           </div>
@@ -1265,8 +1368,8 @@ export default function App() {
 
         {/* Weekly Reset */}
         {showWeeklyReset && (
-          <section className="bg-white dark:bg-gray-900 border border-cyan-200 dark:border-cyan-900/40 rounded-xl p-6 shadow-sm animate-fade-in">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">Weekly Reset Reflection</h2>
+          <section className="bg-white dark:bg-gray-900 border border-cyan-200 dark:border-cyan-900/40 rounded-xl p-4 sm:p-6 shadow-sm animate-fade-in">
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">Weekly Reset Reflection</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-5">Short, honest answers. No scoring — just recalibration.</p>
             <div className="space-y-4">
               <div>
@@ -1515,20 +1618,20 @@ export default function App() {
 
   return (
     <div className={isDark ? 'dark' : ''}>
-      <div className="min-h-screen bg-gray-50/50 dark:bg-[#060606] text-gray-900 dark:text-gray-100 font-sans p-4 md:p-8 selection:bg-blue-500/10 selection:text-blue-500 transition-colors duration-200">
+      <div className="min-h-screen bg-gray-50/50 dark:bg-[#060606] text-gray-900 dark:text-gray-100 font-sans p-3 sm:p-4 md:p-8 selection:bg-blue-500/10 selection:text-blue-500 transition-colors duration-200">
         <div className="max-w-5xl mx-auto">
           
           {/* Main App Header */}
-          <header className="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-100 dark:border-gray-800 pb-6 mb-8 gap-5">
+          <header className="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-100 dark:border-gray-800 pb-4 sm:pb-6 mb-6 sm:mb-8 gap-3 sm:gap-5">
             <div>
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
-                <span className="text-xs font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400">ACTIVE SESSION ENGINE</span>
+                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400">ACTIVE SESSION ENGINE</span>
               </div>
-              <h1 className="text-2xl font-black tracking-tight mt-1">EXECUTION DASHBOARD</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Tactical execution & target-focused progression tracing.</p>
-                <span className="text-gray-300 dark:text-gray-700">|</span>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight mt-1">EXECUTION DASHBOARD</h1>
+              <div className="flex items-center gap-1.5 sm:gap-2 mt-1 flex-wrap">
+                <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 hidden sm:block">Tactical execution & target-focused progression tracing.</p>
+                <span className="text-gray-300 dark:text-gray-700 hidden sm:inline">|</span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Focus:</span>
@@ -1583,7 +1686,7 @@ export default function App() {
           </header>
 
           {/* Navigation System */}
-          <nav className="flex gap-4 mb-8 border-b border-gray-100 dark:border-gray-800/85 overflow-x-auto scrollbar-none">
+          <nav className="flex gap-3 sm:gap-4 mb-6 sm:mb-8 border-b border-gray-100 dark:border-gray-800/85 overflow-x-auto scrollbar-none pb-1">
             {[
               { id: 'execution', label: 'Layer 1: Daily Logs' },
               { id: 'technical', label: 'Layer 2: Hard Skills' },
