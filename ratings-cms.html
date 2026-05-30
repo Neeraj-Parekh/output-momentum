@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internal Ratings Console</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='%23b45309'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23faf9f6'/%3E%3C/svg%3E">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        display: ['Space Grotesk', 'sans-serif'],
+                        body: ['IBM Plex Sans', 'sans-serif'],
+                        mono: ['IBM Plex Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'IBM Plex Sans', sans-serif; }
+        h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; }
+        code, .font-mono { font-family: 'IBM Plex Mono', monospace; }
+
+        html { transition: background-color 0.4s ease, color 0.4s ease; }
+
+        .noise-bg::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.02;
+            pointer-events: none;
+            z-index: 9999;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+
+        ::selection { background: rgba(217, 119, 6, 0.3); }
+
+        .rating-star {
+            transition: transform 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 22px;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .rating-star:hover,
+        .rating-star.active {
+            transform: scale(1.15);
+            color: #b45309;
+        }
+
+        .ratings-card {
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            border-radius: 10px;
+        }
+
+        .ratings-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        .preview-item {
+            transition: background-color 0.15s ease, transform 0.15s ease;
+        }
+
+        .preview-item:hover {
+            transform: translateX(2px);
+        }
+    </style>
+</head>
+
+<body class="noise-bg">
+    <div id="root"></div>
+
+    <script src="data.js"></script>
+    <script>
+        const state = {
+            dark: false,
+            company: 'CopperCloud'
+        };
+
+        const storageKeys = {
+            company: 'portfolio_active_company',
+            theme: 'portfolio_dark_theme'
+        };
+
+        function esc(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function icon(name, size = 18) {
+            const s = size;
+            const icons = {
+                sun: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
+                moon: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+                arrowRight: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`,
+                trash: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+                save: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`
+            };
+            return icons[name] || '';
+        }
+
+        function applyTheme() {
+            const bg = state.dark ? '#0c0a09' : '#FAF9F6';
+            const fg = state.dark ? '#e7e5e4' : '#1c1917';
+            document.documentElement.style.backgroundColor = bg;
+            document.documentElement.style.color = fg;
+            document.body.style.backgroundColor = bg;
+        }
+
+        function getCompanyRating(projectId) {
+            return ratingsManager.getRating(projectId, state.company) || { rating: null, ranking: null, notes: '' };
+        }
+
+        function persistCompany(company) {
+            state.company = company.trim() || 'CopperCloud';
+            localStorage.setItem(storageKeys.company, state.company);
+        }
+
+        function loadState() {
+            const savedCompany = localStorage.getItem(storageKeys.company);
+            const savedTheme = localStorage.getItem(storageKeys.theme);
+            if (savedCompany) state.company = savedCompany;
+            if (savedTheme === '1') state.dark = true;
+        }
+
+        function toggleTheme() {
+            state.dark = !state.dark;
+            localStorage.setItem(storageKeys.theme, state.dark ? '1' : '0');
+            renderPage();
+        }
+
+        function updateCompany(value) {
+            persistCompany(value);
+            renderPage();
+        }
+
+        function saveProject(projectId, patch) {
+            const current = ratingsManager.getRating(projectId, state.company) || {};
+            const rating = patch.rating !== undefined ? patch.rating : current.rating ?? null;
+            const ranking = patch.ranking !== undefined ? patch.ranking : current.ranking ?? null;
+            const notes = patch.notes !== undefined ? patch.notes : current.notes ?? '';
+            const skills = current.skills || [];
+            ratingsManager.setRating(projectId, state.company, rating, ranking, skills, notes);
+            renderPage();
+        }
+
+        function clearProject(projectId) {
+            ratingsManager.deleteRating(projectId, state.company);
+            renderPage();
+        }
+
+        function buildStars(projectId, rating, accent, muted) {
+            return [1, 2, 3, 4, 5].map(value => {
+                const active = value <= (Number(rating) || 0);
+                return `<button type="button" class="rating-star ${active ? 'active' : ''}" onclick="saveProject('${projectId}', { rating: ${value} })" aria-label="Set rating ${value} for ${projectId}" style="color: ${active ? accent : muted};">★</button>`;
+            }).join('');
+        }
+
+        function formatRating(rating) {
+            const value = Number(rating);
+            return Number.isFinite(value) && value > 0 ? `${value}/5` : 'Unrated';
+        }
+
+        function getOrderedPreview() {
+            return ratingsManager.getOrderedProjects(state.company);
+        }
+
+        function getGalleryImages(projectId) {
+            return imageGalleryManager.getImages(projectId);
+        }
+
+        function getGallerySettings(projectId, project) {
+            const stored = imageGalleryManager.getSettings(projectId);
+            const mode = stored.mode || project.galleryMode || 'carousel';
+            const widthValue = stored.width ?? project.galleryWidth ?? 100;
+            return {
+                mode,
+                width: Number(widthValue) || 100
+            };
+        }
+
+        function addGalleryImage(projectId) {
+            const urlInput = document.getElementById(`img-url-${projectId}`);
+            const capInput = document.getElementById(`img-cap-${projectId}`);
+            const url = urlInput ? urlInput.value.trim() : '';
+            const caption = capInput ? capInput.value.trim() : '';
+            if (!url) return;
+            imageGalleryManager.addImage(projectId, url, caption);
+            renderPage();
+        }
+
+        function removeGalleryImage(projectId, index) {
+            imageGalleryManager.removeImage(projectId, index);
+            renderPage();
+        }
+
+        function setGalleryMode(projectId, mode) {
+            imageGalleryManager.setGalleryMode(projectId, mode);
+            renderPage();
+        }
+
+        function setGalleryWidth(projectId, value) {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isFinite(parsed)) return;
+            const clamped = Math.min(100, Math.max(40, parsed));
+            imageGalleryManager.setGalleryWidth(projectId, clamped);
+            renderPage();
+        }
+
+        function renderPage() {
+            applyTheme();
+
+            const d = state.dark;
+            const bg = d ? '#0c0a09' : '#FAF9F6';
+            const fg = d ? '#e7e5e4' : '#1c1917';
+            const sub = d ? '#a8a29e' : '#57534e';
+            const border = d ? '#292524' : '#d6d3d1';
+            const boxBg = d ? '#1c1917' : '#f5f5f4';
+            const accent = '#b45309';
+            const accentBg = 'rgba(180,83,9,.08)';
+
+            const ordered = getOrderedPreview();
+            const ratedCount = PROJECTS.filter(project => Boolean(ratingsManager.getRating(project.id, state.company))).length;
+            const rankedCount = PROJECTS.filter(project => {
+                const rating = ratingsManager.getRating(project.id, state.company);
+                return rating && rating.ranking !== null && rating.ranking !== '';
+            }).length;
+            const ratingValues = PROJECTS
+                .map(project => ratingsManager.getRating(project.id, state.company))
+                .filter(Boolean)
+                .map(value => Number(value.rating) || 0)
+                .filter(value => value > 0);
+            const averageRating = ratingValues.length
+                ? (ratingValues.reduce((sum, value) => sum + value, 0) / ratingValues.length).toFixed(1)
+                : '0.0';
+
+            let html = '';
+
+            html += `<div class="min-h-screen" style="background:${bg};color:${fg}">`;
+            html += `<header class="max-w-7xl mx-auto px-6 md:px-8 pt-12 pb-8" style="border-bottom:2px solid ${border}">
+                <div class="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                    <div class="max-w-3xl">
+                        <div class="flex items-center gap-3 mb-3">
+                            <span class="inline-block w-3 h-3 rounded-full" style="background:${accent};box-shadow:0 0 12px ${accent}"></span>
+                            <span class="text-xs font-bold uppercase tracking-[.2em]" style="color:${accent}">Internal Portfolio Controls</span>
+                        </div>
+                        <h1 class="text-4xl md:text-6xl font-bold tracking-tight leading-none" style="color:${fg}">Ratings Console</h1>
+                        <p class="text-base md:text-lg mt-3 leading-relaxed" style="color:${sub}">Use this screen to score projects for a specific company, assign numeric rank order, and control how the public portfolio is arranged. The main website only reads this saved internal order.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a href="index.html" class="p-2.5 border shadow-sm flex items-center justify-center transition-all hover:opacity-70" style="border-color:${border};background:${boxBg};color:${fg};text-decoration:none" aria-label="Back to portfolio">${icon('arrowRight', 18)}</a>
+                        <button onclick="toggleTheme()" class="p-2.5 border shadow-sm flex items-center justify-center transition-all hover:opacity-70" style="border-color:${border};background:${boxBg};color:${fg}" aria-label="Toggle theme">${d ? icon('sun', 20) : icon('moon', 20)}</button>
+                    </div>
+                </div>
+            </header>`;
+
+            html += `<main class="max-w-7xl mx-auto px-6 md:px-8 py-12">`;
+
+            html += `<section class="mb-10 p-5 md:p-6" style="border:1px solid ${border};background:${accentBg}">
+                <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold uppercase mb-2" style="color:${fg}">Active Company</h2>
+                        <p class="text-sm" style="color:${sub}">Switch this value to score the same portfolio for a different employer.</p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-3 sm:items-end w-full md:w-auto">
+                        <div class="w-full sm:w-72">
+                            <label class="block text-xs font-bold uppercase mb-2" style="color:${accent}">Company name</label>
+                            <input id="company-input" value="${esc(state.company)}" onblur="updateCompany(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault(); updateCompany(this.value);}" class="w-full px-3 py-2 border" style="border-color:${border};background:${boxBg};color:${fg}" />
+                        </div>
+                        <div class="flex gap-2 flex-wrap">
+                            <button type="button" onclick="updateCompany('CopperCloud')" class="px-3 py-2 text-xs font-bold border" style="border-color:${border};background:${boxBg};color:${accent}">CopperCloud</button>
+                            <button type="button" onclick="updateCompany('HiringManager')" class="px-3 py-2 text-xs font-bold border" style="border-color:${border};background:${boxBg};color:${accent}">HiringManager</button>
+                            <button type="button" onclick="updateCompany('Custom Company')" class="px-3 py-2 text-xs font-bold border" style="border-color:${border};background:${boxBg};color:${accent}">Example</button>
+                        </div>
+                    </div>
+                </div>
+            </section>`;
+
+            html += `<section class="grid md:grid-cols-4 gap-4 mb-10">`;
+            html += `<div class="p-4 border" style="border-color:${border};background:${boxBg}"><div class="text-[10px] uppercase font-bold tracking-wider mb-1" style="color:${accent}">Projects Rated</div><div class="text-3xl font-bold" style="color:${fg}">${ratedCount}</div></div>`;
+            html += `<div class="p-4 border" style="border-color:${border};background:${boxBg}"><div class="text-[10px] uppercase font-bold tracking-wider mb-1" style="color:${accent}">Ranked Projects</div><div class="text-3xl font-bold" style="color:${fg}">${rankedCount}</div></div>`;
+            html += `<div class="p-4 border" style="border-color:${border};background:${boxBg}"><div class="text-[10px] uppercase font-bold tracking-wider mb-1" style="color:${accent}">Average Rating</div><div class="text-3xl font-bold" style="color:${fg}">${averageRating}</div></div>`;
+            html += `<div class="p-4 border" style="border-color:${border};background:${boxBg}"><div class="text-[10px] uppercase font-bold tracking-wider mb-1" style="color:${accent}">Public Order</div><div class="text-3xl font-bold" style="color:${fg}">Live</div></div>`;
+            html += `</section>`;
+
+            html += `<section class="mb-12">
+                <div class="flex items-center justify-between gap-4 mb-4">
+                    <h2 class="text-xl font-bold uppercase" style="color:${fg}">Main Website Order Preview</h2>
+                    <button type="button" onclick="copyCompanySummary()" class="px-3 py-2 text-xs font-bold border flex items-center gap-2" style="border-color:${border};background:${boxBg};color:${accent}">${icon('save', 14)} Copy JSON</button>
+                </div>
+                <div class="space-y-2">
+                    ${ordered.map((project, index) => {
+                        const rating = ratingsManager.getRating(project.id, state.company);
+                        const hasRank = rating && rating.ranking !== null && rating.ranking !== '';
+                        const hasRating = rating && Number(rating.rating) > 0;
+                        return `<div class="preview-item flex items-center justify-between gap-4 px-4 py-3 border" style="border-color:${border};background:${boxBg}">
+                            <div class="min-w-0">
+                                <div class="text-xs font-mono uppercase" style="color:${accent}">#${index + 1}${hasRank ? ` · Rank ${rating.ranking}` : ''}${hasRating ? ` · ${rating.rating}/5` : ''}</div>
+                                <div class="font-bold truncate" style="color:${fg}">${esc(project.title)}</div>
+                            </div>
+                            <div class="text-[11px] font-mono text-right" style="color:${sub}">${esc(project.status)}</div>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </section>`;
+
+            html += `<section class="mb-12">
+                <div class="flex items-end justify-between gap-4 mb-4">
+                    <div>
+                        <h2 class="text-xl font-bold uppercase" style="color:${fg}">Project Scoring</h2>
+                        <p class="text-sm mt-1" style="color:${sub}">Set a star score and a numeric rank. Lower rank numbers appear earlier on the public site.</p>
+                    </div>
+                    <p class="text-xs font-mono" style="color:${sub}">Saved locally in this browser</p>
+                </div>
+                <div class="grid lg:grid-cols-2 gap-5">`;
+
+            PROJECTS.forEach((project, index) => {
+                const rating = getCompanyRating(project.id);
+                const galleryImages = getGalleryImages(project.id);
+                const gallerySettings = getGallerySettings(project.id, project);
+                html += `<article class="ratings-card p-5 border" style="border-color:${border};background:${boxBg}">
+                    <div class="flex items-start justify-between gap-4 mb-3">
+                        <div class="min-w-0">
+                            <div class="text-xs font-mono uppercase mb-1" style="color:${accent}">Project ${index + 1}</div>
+                            <h3 class="text-lg font-bold leading-tight" style="color:${fg}">${esc(project.title)}</h3>
+                            <p class="text-xs mt-1" style="color:${sub}">${esc(project.statusLabel || project.status || '')}</p>
+                        </div>
+                        <button type="button" onclick="clearProject('${project.id}')" class="p-2 border" title="Clear internal rating" aria-label="Clear internal rating" style="border-color:${border};background:${d ? '#0c0a09' : '#fff'};color:${accent}">${icon('trash', 14)}</button>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="text-xs font-bold uppercase mb-2" style="color:${accent}">Rating</div>
+                        <div class="flex items-center gap-1">${buildStars(project.id, rating.rating, accent, border)}</div>
+                        <div class="text-xs mt-2" style="color:${sub}">${formatRating(rating.rating)}</div>
+                    </div>
+
+                    <div class="grid sm:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase mb-2" style="color:${accent}">Ranking</label>
+                            <input type="number" min="1" step="1" value="${rating.ranking ?? ''}" oninput="saveProject('${project.id}', { ranking: this.value === '' ? null : this.value })" class="w-full px-3 py-2 border" style="border-color:${border};background:${d ? '#0c0a09' : '#fff'};color:${fg}" placeholder="1 = highest" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase mb-2" style="color:${accent}">Status</label>
+                            <div class="px-3 py-2 border text-sm" style="border-color:${border};background:${d ? '#0c0a09' : '#fff'};color:${sub}">${esc(project.status)}</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold uppercase mb-2" style="color:${accent}">Notes</label>
+                        <textarea rows="3" onchange="saveProject('${project.id}', { notes: this.value })" class="w-full px-3 py-2 border resize-y" style="border-color:${border};background:${d ? '#0c0a09' : '#fff'};color:${fg}">${esc(rating.notes || '')}</textarea>
+                    </div>
+
+                    <div class="mt-5 pt-4" style="border-top:1px solid ${border}">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="text-xs font-bold uppercase" style="color:${accent}">Gallery</div>
+                            <div class="text-[10px] font-mono" style="color:${sub}">${galleryImages.length} image(s)</div>
+                        </div>
+
+                        <div class="grid sm:grid-cols-3 gap-2 mb-3">
+                            <input id="img-url-${project.id}" type="text" class="px-3 py-2 border text-xs" style="border-color:${border};background:${d ? '#0c0a09' : '#fff'};color:${fg}" placeholder="Image URL" />
+                            <input id="img-cap-${project.id}" type="text" class="px-3 py-2 border text-xs" style="border-color:${border};background:${d ? '#0c0a09' : '#fff'};color:${fg}" placeholder="Caption (optional)" />
+                            <button type="button" onclick="addGalleryImage('${project.id}')" class="px-3 py-2 text-xs font-bold border" style="border-color:${accent};background:${accentBg};color:${accent}">Add</button>
+                        </div>
+
+                        <div class="grid sm:grid-cols-2 gap-4 mb-3">
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase mb-2" style="color:${accent}">Gallery Mode</label>
+                                <div class="grid grid-cols-2 gap-2 text-xs" style="color:${sub}">
+                                    <label style="display:flex;gap:6px;align-items:center">
+                                        <input type="radio" name="gallery-${project.id}" value="carousel" ${gallerySettings.mode === 'carousel' ? 'checked' : ''} onclick="setGalleryMode('${project.id}', 'carousel')" />
+                                        <span>Carousel</span>
+                                    </label>
+                                    <label style="display:flex;gap:6px;align-items:center">
+                                        <input type="radio" name="gallery-${project.id}" value="grid" ${gallerySettings.mode === 'grid' ? 'checked' : ''} onclick="setGalleryMode('${project.id}', 'grid')" />
+                                        <span>Grid</span>
+                                    </label>
+                                    <label style="display:flex;gap:6px;align-items:center">
+                                        <input type="radio" name="gallery-${project.id}" value="collage" ${gallerySettings.mode === 'collage' ? 'checked' : ''} onclick="setGalleryMode('${project.id}', 'collage')" />
+                                        <span>Collage</span>
+                                    </label>
+                                    <label style="display:flex;gap:6px;align-items:center">
+                                        <input type="radio" name="gallery-${project.id}" value="vertical" ${gallerySettings.mode === 'vertical' ? 'checked' : ''} onclick="setGalleryMode('${project.id}', 'vertical')" />
+                                        <span>Vertical</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase mb-2" style="color:${accent}">Width (${gallerySettings.width}%)</label>
+                                <input type="range" min="40" max="100" value="${gallerySettings.width}" oninput="setGalleryWidth('${project.id}', this.value)" style="width:100%" />
+                                <div class="text-[10px] mt-1" style="color:${sub}">Controls gallery width on the main page</div>
+                            </div>
+                        </div>
+
+                        <div style="border:1px solid ${border};border-radius:6px;padding:8px;max-height:140px;overflow:auto;background:${d ? '#0c0a09' : '#fff'}">
+                            ${galleryImages.length === 0 ? `<div class="text-[11px]" style="color:${sub}">No images yet.</div>` : galleryImages.map((img, i) => `
+                                <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid ${border};padding:6px 0">
+                                    <div style="min-width:0">
+                                        <div class="text-[11px]" style="color:${fg}">${esc(img.caption || 'Untitled')}</div>
+                                        <div class="text-[10px]" style="color:${sub}">${esc(img.url)}</div>
+                                    </div>
+                                    <button type="button" onclick="removeGalleryImage('${project.id}', ${i})" class="px-2 py-1 text-[10px] border" style="border-color:#ef4444;color:#ef4444">Remove</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </article>`;
+            });
+
+            html += `</div></section>`;
+
+            html += `<footer class="py-8 text-center text-xs uppercase tracking-widest" style="border-top:1px solid ${border};color:${sub}">Internal only · main portfolio reads this order from localStorage</footer>`;
+            html += `</main></div>`;
+
+            document.getElementById('root').innerHTML = html;
+            const input = document.getElementById('company-input');
+            if (input && input.value !== state.company) input.value = state.company;
+        }
+
+        function copyCompanySummary() {
+            const payload = {
+                company: state.company,
+                ratings: ratingsManager.getAllRatings()
+            };
+            navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            renderPage();
+        });
+    </script>
+</body>
+</html>

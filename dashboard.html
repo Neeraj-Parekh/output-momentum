@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gas Leak Monitoring System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg-deep: #0a0f1a;
+  --bg-surface: #111827;
+  --bg-elevated: #1a2332;
+  --bg-card: #1e293b;
+  --border-subtle: #1e293b;
+  --border-default: #2d3a4a;
+  --border-hover: #3b4a5a;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-blue: #38bdf8;
+  --accent-green: #22c55e;
+  --accent-amber: #eab308;
+  --accent-red: #ef4444;
+  --gradient-green: linear-gradient(135deg, #166534, #22c55e);
+  --gradient-amber: linear-gradient(135deg, #854d0e, #eab308);
+  --gradient-red: linear-gradient(135deg, #991b1b, #ef4444);
+  --glow-green: 0 0 20px rgba(34,197,94,0.15);
+  --glow-amber: 0 0 20px rgba(234,179,8,0.15);
+  --glow-red: 0 0 25px rgba(239,68,68,0.2);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+html { font-size: 15px; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  padding: 20px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+.dashboard { max-width: 1320px; margin: 0 auto; }
+
+/* Header */
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 28px;
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  margin-bottom: 18px;
+  position: relative; overflow: hidden;
+}
+header::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(56,189,248,0.03), transparent);
+  pointer-events: none;
+}
+header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+header h1 span { color: var(--accent-blue); font-weight: 800; }
+.header-badge {
+  font-size: 11px; font-weight: 600; padding: 6px 16px; border-radius: 20px;
+  background: rgba(56,189,248,0.1); color: var(--accent-blue);
+  border: 1px solid rgba(56,189,248,0.2);
+  letter-spacing: 0.3px; text-transform: uppercase;
+}
+
+/* Node Status Bar */
+.node-bar {
+  display: flex; flex-wrap: wrap; gap: 0;
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0; margin-bottom: 18px;
+  overflow: hidden;
+}
+.node-section {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px;
+  border-right: 1px solid var(--border-subtle);
+  position: relative;
+}
+.node-section:last-child { border-right: none; }
+.node-item { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.node-item .label {
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+  font-size: 9px; font-weight: 600;
+}
+.node-item .value { color: var(--text-primary); font-weight: 600; font-size: 13px; letter-spacing: 0.2px; }
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+  animation: pulse-dot 2s ease-in-out infinite;
+  flex-shrink: 0; position: relative;
+}
+.status-dot::after {
+  content: ''; position: absolute; inset: -3px; border-radius: 50%;
+  opacity: 0.3; animation: pulse-ring 2s ease-in-out infinite;
+}
+.status-dot.online { background: var(--accent-green); box-shadow: 0 0 10px rgba(34,197,94,0.5); }
+.status-dot.online::after { background: var(--accent-green); }
+.status-dot.simulation { background: var(--accent-amber); box-shadow: 0 0 10px rgba(234,179,8,0.4); }
+.status-dot.simulation::after { background: var(--accent-amber); }
+.status-dot.offline { background: var(--accent-red); box-shadow: 0 0 10px rgba(239,68,68,0.5); }
+.status-dot.offline::after { background: var(--accent-red); }
+.status-dot.disabled { background: var(--text-muted); box-shadow: none; animation: none; }
+.status-dot.disabled::after { display: none; }
+@keyframes pulse-dot { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.7; transform:scale(1.2); } }
+@keyframes pulse-ring { 0%,100% { transform:scale(1); opacity:0.3; } 50% { transform:scale(1.8); opacity:0; } }
+.status-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.status-label.simulation { color: var(--accent-amber); }
+.status-label.online { color: var(--accent-green); }
+.status-label.offline { color: var(--accent-red); }
+.signal-bars { display: flex; align-items: end; gap: 2px; height: 14px; }
+.signal-bars .bar {
+  width: 3px; border-radius: 1px; background: var(--border-default);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.signal-bars .bar.active { background: var(--accent-green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+.signal-bars .bar.s1 { height: 4px; }
+.signal-bars .bar.s2 { height: 7px; }
+.signal-bars .bar.s3 { height: 10px; }
+.signal-bars .bar.s4 { height: 13px; }
+.sync-icon { display: inline-block; font-size: 11px; color: var(--accent-blue); transition: transform 0.3s; }
+.syncing { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.security-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 4px;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.security-secure { background: rgba(34,197,94,0.12); color: var(--accent-green); border: 1px solid rgba(34,197,94,0.2); }
+.security-warning { background: rgba(234,179,8,0.12); color: var(--accent-amber); border: 1px solid rgba(234,179,8,0.2); }
+.security-breach { background: rgba(239,68,68,0.12); color: var(--accent-red); border: 1px solid rgba(239,68,68,0.2); }
+
+/* Alarm Banner */
+.alarm-banner {
+  padding: 20px 28px; border-radius: var(--radius-lg); margin-bottom: 20px;
+  text-align: center; font-size: 22px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative; overflow: hidden;
+}
+.alarm-banner::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+  pointer-events: none;
+}
+.alarm-banner.safe {
+  background: linear-gradient(135deg, #1a2332, #1e293b);
+  color: var(--text-muted); border: 1px solid var(--border-default);
+  box-shadow: none;
+}
+.alarm-banner.warning {
+  background: linear-gradient(135deg, #422006, #713f12);
+  color: #fef08a; border: 1px solid rgba(234,179,8,0.3);
+  box-shadow: 0 0 30px rgba(234,179,8,0.15), inset 0 1px 0 rgba(234,179,8,0.1);
+}
+.alarm-banner.danger {
+  background: linear-gradient(135deg, #450a0a, #7f1d1d);
+  color: #fecaca; border: 1px solid rgba(239,68,68,0.3);
+  box-shadow: 0 0 40px rgba(239,68,68,0.2), inset 0 1px 0 rgba(239,68,68,0.1);
+  animation: pulse-danger 1.2s ease-in-out infinite;
+}
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; box-shadow: 0 0 40px rgba(239,68,68,0.2), inset 0 1px 0 rgba(239,68,68,0.1); }
+  50% { opacity: 0.92; box-shadow: 0 0 60px rgba(239,68,68,0.35), inset 0 1px 0 rgba(239,68,68,0.1); }
+}
+
+/* Grid */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+.grid-3 { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-bottom: 18px; }
+.card {
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  transition: border-color 0.2s;
+}
+.card:hover { border-color: var(--border-hover); }
+.card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 18px;
+}
+.card-header h2 {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--text-muted); margin: 0;
+}
+.btn-expand {
+  background: transparent; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  color: var(--text-muted); cursor: pointer; padding: 4px 10px;
+  font-size: 13px; line-height: 1; transition: all 0.2s;
+}
+.btn-expand:hover { background: var(--bg-card); color: var(--text-primary); border-color: var(--border-hover); }
+
+/* Gauge */
+.gauge-wrapper { text-align: center; position: relative; }
+.gauge-value {
+  position: absolute; top: 54%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 46px; font-weight: 800; letter-spacing: -1px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.gauge-unit { font-size: 14px; font-weight: 500; color: var(--text-muted); font-family: 'Inter', sans-serif; }
+.gauge-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
+.gauge-canvas { width: 100%; max-width: 340px; margin: 0 auto; display: block; }
+
+/* Status Grid */
+.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.status-item {
+  background: rgba(10,15,26,0.5);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(4px);
+}
+.status-item .label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+.status-item .value { font-size: 18px; font-weight: 700; margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+.value.open { color: var(--accent-red); }
+.value.closed { color: var(--accent-green); }
+
+/* Mode Buttons */
+.mode-group { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.btn-mode {
+  flex: 1; padding: 10px; border: 1.5px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: rgba(10,15,26,0.4); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.8px;
+  min-width: 80px; position: relative; overflow: hidden;
+}
+.btn-mode:hover { border-color: var(--border-hover); color: var(--text-secondary); }
+.btn-mode.active-auto { border-color: var(--accent-green); background: rgba(34,197,94,0.1); color: var(--accent-green); box-shadow: 0 0 15px rgba(34,197,94,0.08); }
+.btn-mode.active-manual { border-color: var(--accent-amber); background: rgba(234,179,8,0.1); color: var(--accent-amber); box-shadow: 0 0 15px rgba(234,179,8,0.08); }
+.btn-mode.active-timer { border-color: var(--accent-blue); background: rgba(56,189,248,0.1); color: var(--accent-blue); box-shadow: 0 0 15px rgba(56,189,248,0.08); }
+
+.controls { display: flex; gap: 8px; margin-bottom: 10px; }
+.btn {
+  flex: 1; padding: 10px; border: none; border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+  text-transform: uppercase; letter-spacing: 0.8px; position: relative; overflow: hidden;
+}
+.btn-on { background: var(--gradient-green); color: #052e16; }
+.btn-on:hover { box-shadow: 0 0 20px rgba(34,197,94,0.3); transform: translateY(-1px); }
+.btn-on:disabled { background: #166534; color: #4ade80; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-off { background: var(--gradient-red); color: #450a0a; }
+.btn-off:hover { box-shadow: 0 0 20px rgba(239,68,68,0.3); transform: translateY(-1px); }
+.btn-off:disabled { background: #991b1b; color: #fca5a5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Timer */
+.timer-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.timer-row input {
+  flex: 1; padding: 9px 12px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: rgba(10,15,26,0.5); color: var(--text-primary);
+  font-size: 13px; font-family: 'JetBrains Mono', monospace;
+  transition: border-color 0.2s;
+}
+.timer-row input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(56,189,248,0.1); }
+.btn-set {
+  padding: 9px 20px; background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  color: #fff; border: none; border-radius: var(--radius-sm);
+  font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.btn-set:hover { box-shadow: 0 0 20px rgba(37,99,235,0.3); transform: translateY(-1px); }
+
+/* Threshold info */
+.threshold-info { margin-top: 14px; }
+.threshold-bar {
+  height: 6px; border-radius: 3px; margin-top: 6px; overflow: hidden;
+  display: flex; gap: 2px;
+}
+.threshold-bar .seg { height: 100%; border-radius: 3px; }
+.threshold-bar .seg.safe { background: var(--gradient-green); flex: 3; }
+.threshold-bar .seg.warning { background: var(--gradient-amber); flex: 3; }
+.threshold-bar .seg.danger { background: var(--gradient-red); flex: 4; }
+.threshold-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 4px; font-weight: 500; }
+
+/* Chart */
+.chart-container { position: relative; height: 200px; width: 100%; }
+
+/* Alarm Journal */
+.journal-wrapper {
+  overflow-x: auto; margin-top: 12px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+}
+.journal-table {
+  width: 100%; border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  min-width: 800px;
+}
+.journal-table th {
+  background: rgba(10,15,26,0.6); color: var(--text-muted);
+  padding: 9px 10px; text-align: left;
+  font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;
+  border-bottom: 1.5px solid var(--border-subtle);
+  position: sticky; top: 0; z-index: 1;
+}
+.journal-table td {
+  padding: 7px 10px; border-bottom: 1px solid rgba(30,41,59,0.5);
+  vertical-align: middle; white-space: nowrap;
+}
+.journal-table tr:last-child td { border-bottom: none; }
+.journal-table tr:hover td { background: rgba(45,58,74,0.2); }
+.journal-body {
+  max-height: 220px; overflow-y: auto;
+  background: rgba(10,15,26,0.3);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+.journal-body::-webkit-scrollbar { width: 5px; }
+.journal-body::-webkit-scrollbar-track { background: transparent; }
+.journal-body::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+.event-id { color: #818cf8; font-weight: 600; font-size: 10px; }
+.severity-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 3px;
+  font-weight: 700; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.severity-safe { background: rgba(34,197,94,0.12); color: var(--accent-green); }
+.severity-warning { background: rgba(234,179,8,0.12); color: var(--accent-amber); }
+.severity-danger { background: rgba(239,68,68,0.12); color: var(--accent-red); }
+.timestamp-cell { color: var(--text-muted); font-size: 10px; }
+.valve-open { color: var(--accent-red); font-weight: 600; }
+.valve-closed { color: var(--accent-green); font-weight: 600; }
+.action-cell { color: var(--text-secondary); }
+
+/* Button override indicator */
+.btn-sim {
+  display: inline-block; padding: 7px 14px; margin: 6px 0;
+  background: rgba(10,15,26,0.5); color: var(--text-secondary);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 11px; font-weight: 500;
+  transition: all 0.2s; letter-spacing: 0.3px;
+}
+.btn-sim:active { transform: scale(0.97); }
+.btn-sim:hover { background: var(--bg-card); border-color: var(--border-hover); color: var(--text-primary); }
+
+/* Fullscreen Overlay */
+.overlay {
+  display: none; position: fixed; inset: 0; z-index: 9999;
+  background: rgba(10,15,26,0.95);
+  backdrop-filter: blur(8px);
+  padding: 28px; overflow-y: auto;
+}
+.overlay.open { display: block; }
+.overlay-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 24px;
+}
+.overlay-header h2 { color: var(--text-primary); font-size: 18px; font-weight: 700; margin: 0; }
+.overlay-body { max-width: 1200px; margin: 0 auto; }
+.btn-close {
+  background: transparent; border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  color: var(--text-muted); cursor: pointer; padding: 8px 18px;
+  font-size: 13px; font-weight: 500; transition: all 0.2s;
+}
+.btn-close:hover { background: var(--bg-card); color: var(--text-primary); border-color: var(--border-hover); }
+
+/* Monospace text elements */
+code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  body { padding: 12px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  header { flex-direction: column; gap: 8px; text-align: center; padding: 14px 18px; }
+  header h1 { font-size: 16px; }
+  .alarm-banner { font-size: 16px; padding: 14px 18px; }
+  .gauge-value { font-size: 32px; }
+  .node-bar { flex-direction: column; }
+  .node-section { border-right: none; width: 100%; padding: 8px 14px; border-bottom: 1px solid var(--border-subtle); }
+  .node-section:last-child { border-bottom: none; }
+}
+@media (min-width: 769px) and (max-width: 1024px) {
+  .grid-3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="dashboard">
+  <header>
+    <h1><span>GAS</span> LEAK MONITORING SYSTEM</h1>
+    <div>
+      <span class="header-badge" id="connectionBadge">SIMULATION</span>
+    </div>
+  </header>
+
+  <div class="node-bar">
+    <div class="node-section">
+      <span class="status-dot simulation" id="statusDot"></span>
+      <span class="status-label simulation" id="statusLabel">SIMULATION</span>
+    </div>
+    <div class="node-section">
+      <div class="node-item col">
+        <span class="label">Node ID</span>
+        <span class="value">ESP32GasDetector-001</span>
+      </div>
+    </div>
+    <div class="node-section">
+      <div class="node-item col">
+        <span class="label">Fleet / Group</span>
+        <span class="value">LPG-Monitor-West</span>
+      </div>
+    </div>
+    <div class="node-section">
+      <div class="node-item col">
+        <span class="label">Uptime</span>
+        <span class="value" id="uptimeDisplay">00:00:00</span>
+      </div>
+    </div>
+    <div class="node-section">
+      <div class="node-item col">
+        <span class="label">Last Sync</span>
+        <span class="value"><span class="sync-icon" id="syncIcon">⟳</span> <span id="lastSyncText">just now</span></span>
+      </div>
+    </div>
+    <div class="node-section">
+      <div class="node-item">
+        <span class="label">Signal</span>
+        <span class="value" id="signalValue">-45 dBm</span>
+        <div class="signal-bars" id="signalBars">
+          <div class="bar s1"></div>
+          <div class="bar s2"></div>
+          <div class="bar s3"></div>
+          <div class="bar s4"></div>
+        </div>
+      </div>
+    </div>
+    <div class="node-section">
+      <div class="node-item col">
+        <span class="label">Firmware</span>
+        <span class="value">v2.1.0</span>
+      </div>
+    </div>
+    <div class="node-section">
+      <div class="node-item">
+        <span class="label">Security</span>
+        <span class="security-badge security-secure" id="securityBadge">✓ SECURE</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="alarm-banner safe" id="alarmBanner">SYSTEM SAFE</div>
+
+  <div class="grid-2">
+    <!-- Gauge -->
+    <div class="card" data-card="gauge">
+      <div class="card-header">
+        <h2>Gas Level</h2>
+        <button class="btn-expand" onclick="expandCard('gauge')">⛶</button>
+      </div>
+      <div class="gauge-wrapper">
+        <canvas id="gaugeCanvas" class="gauge-canvas" width="340" height="220"></canvas>
+        <div class="gauge-value">
+          <span id="gasValueDisplay">0</span>
+          <span class="gauge-unit">ppm</span>
+        </div>
+        <div class="gauge-label">MQ-6 Gas Sensor Reading</div>
+      </div>
+    </div>
+
+    <!-- Status & Controls -->
+    <div class="card" data-card="controls">
+      <div class="card-header">
+        <h2>System Status & Controls</h2>
+        <button class="btn-expand" onclick="expandCard('controls')">⛶</button>
+      </div>
+      <div class="controls-body">
+        <div class="status-grid">
+          <div class="status-item">
+            <div class="label">Relay Status</div>
+            <div class="value closed" id="relayStatus">CLOSED</div>
+          </div>
+          <div class="status-item">
+            <div class="label">System Mode</div>
+            <div class="value" id="modeDisplay" style="color:#22c55e;">AUTO</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Gas Level</div>
+            <div class="value" id="gasLevelStatus" style="color:#22c55e;">0 ppm</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Buzzer</div>
+            <div class="value" id="buzzerStatus" style="color:#22c55e;">OFF</div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <div class="mode-group">
+            <button class="btn-mode active-auto" data-mode="AUTO" onclick="setMode('AUTO')">Auto</button>
+            <button class="btn-mode" data-mode="MANUAL" onclick="setMode('MANUAL')">Manual</button>
+            <button class="btn-mode" data-mode="TIMER" onclick="setMode('TIMER')">Timer</button>
+          </div>
+          <div class="controls">
+            <button class="btn btn-on" id="btnManualOn" onclick="manualOn()">Manual ON</button>
+            <button class="btn btn-off" id="btnManualOff" onclick="manualOff()">Manual OFF</button>
+          </div>
+          <div class="timer-row">
+            <input type="number" id="timerInput" placeholder="Seconds" min="1" value="10">
+            <button class="btn-set" onclick="setTimer()">Set Timer</button>
+          </div>
+          <button class="btn-sim" onclick="simulateButtonPress()">Simulate Physical Button Press</button>
+        </div>
+
+        <div class="threshold-info">
+          <div class="threshold-bar">
+            <div class="seg safe"></div>
+            <div class="seg warning"></div>
+            <div class="seg danger"></div>
+          </div>
+          <div class="threshold-labels">
+            <span>Safe (0–300)</span>
+            <span>Warning (300–600)</span>
+            <span>Danger (600+)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <!-- History Chart -->
+    <div class="card" data-card="chart">
+      <div class="card-header">
+        <h2>Gas Level History</h2>
+        <button class="btn-expand" onclick="expandCard('chart')">⛶</button>
+      </div>
+      <div class="chart-container">
+        <canvas id="historyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Alarm Journal -->
+    <div class="card" data-card="journal">
+      <div class="card-header">
+        <h2>Alarm Journal</h2>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-expand" onclick="exportCSV()" title="Export to CSV">⬇</button>
+          <button class="btn-expand" onclick="expandCard('journal')">⛶</button>
+        </div>
+      </div>
+      <div class="journal-wrapper">
+        <div class="journal-body" id="journalBody">
+          <table class="journal-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Event ID</th>
+                <th>Severity</th>
+                <th>Description</th>
+                <th>Value</th>
+                <th>Valve</th>
+                <th>Action Taken</th>
+              </tr>
+            </thead>
+            <tbody id="journalBodyTbody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fullscreen Overlay -->
+<div class="overlay" id="fullscreenOverlay">
+  <div class="overlay-header">
+    <h2 id="overlayTitle"></h2>
+    <button class="btn-close" onclick="closeOverlay()">✕ Close</button>
+  </div>
+  <div class="overlay-body" id="overlayBody"></div>
+</div>
+
+<script>
+// ====== Constants ======
+const THRESHOLD_SAFE = 300;
+const THRESHOLD_WARN = 600;
+const MAX_LOG = 50;
+const HISTORY_POINTS = 30;
+
+// ====== State ======
+let state = {
+  gasLevel: 0,
+  relayState: false,
+  buzzerState: false,
+  currentMode: 'AUTO',
+  timerActive: false,
+  timerEndTime: 0,
+  manualOverride: false
+};
+
+let alarmStatus = 'safe';
+let historyData = [];
+let logEntries = [];
+
+// ====== Gauge ======
+function drawGauge(level) {
+  const canvas = document.getElementById('gaugeCanvas');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const cx = w / 2, cy = h * 0.58;
+  const outerR = Math.min(w * 0.5, h * 0.52) * 0.95;
+  const arcR = outerR - 10;
+  const startAngle = Math.PI * 1.15;
+  const endAngle = Math.PI * 2.85;
+  const range = 1000;
+  const clamped = Math.min(Math.max(level, 0), range);
+  const fraction = clamped / range;
+  const currentAngle = startAngle + (endAngle - startAngle) * fraction;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Outer decorative ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Background track arc with subtle gradient
+  const bgGrad = ctx.createLinearGradient(0, cy - arcR, 0, cy + arcR);
+  bgGrad.addColorStop(0, '#1e293b');
+  bgGrad.addColorStop(1, '#0f172a');
+  ctx.beginPath();
+  ctx.arc(cx, cy, arcR, startAngle, endAngle);
+  ctx.strokeStyle = bgGrad;
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'butt';
+  ctx.stroke();
+
+  // Glow under current value
+  const glowGrad = ctx.createRadialGradient(cx, cy, arcR * 0.5, cx, cy, arcR);
+  const glowColor = fraction >= 0.6 ? 'rgba(239,68,68,0.12)' :
+                    fraction >= 0.3 ? 'rgba(234,179,8,0.08)' :
+                    'rgba(34,197,94,0.06)';
+  glowGrad.addColorStop(0, 'transparent');
+  glowGrad.addColorStop(1, glowColor);
+  ctx.beginPath();
+  ctx.arc(cx, cy, arcR + 4, startAngle, endAngle);
+  ctx.fillStyle = glowGrad;
+  ctx.fill();
+
+  // Color segments with gradient fill
+  const segColors = [
+    { end: THRESHOLD_SAFE / range, stop1: '#15803d', stop2: '#22c55e' },
+    { end: THRESHOLD_WARN / range, stop1: '#a16207', stop2: '#eab308' },
+    { end: 1, stop1: '#b91c1c', stop2: '#ef4444' }
+  ];
+  let segStart = startAngle;
+  for (const seg of segColors) {
+    const segEnd = startAngle + (endAngle - startAngle) * seg.end;
+    if (currentAngle <= segStart) { segStart = segEnd; continue; }
+    const drawEnd = Math.min(segEnd, currentAngle);
+    const midAngle = (segStart + drawEnd) / 2;
+    const segGrad = ctx.createLinearGradient(
+      cx + Math.cos(midAngle) * arcR, cy + Math.sin(midAngle) * arcR,
+      cx + Math.cos(midAngle) * (arcR - 16), cy + Math.sin(midAngle) * (arcR - 16)
+    );
+    segGrad.addColorStop(0, seg.stop2);
+    segGrad.addColorStop(1, seg.stop1);
+    ctx.beginPath();
+    ctx.arc(cx, cy, arcR, segStart, drawEnd);
+    ctx.strokeStyle = segGrad;
+    ctx.lineWidth = 16;
+    ctx.lineCap = 'butt';
+    ctx.stroke();
+    segStart = segEnd;
+    if (segEnd >= currentAngle) break;
+  }
+
+  // Segment end caps at threshold boundaries
+  const boundary300 = startAngle + (endAngle - startAngle) * (THRESHOLD_SAFE / range);
+  const boundary600 = startAngle + (endAngle - startAngle) * (THRESHOLD_WARN / range);
+  if (currentAngle > boundary300) {
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(boundary300) * arcR, cy + Math.sin(boundary300) * arcR, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  if (currentAngle > boundary600) {
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(boundary600) * arcR, cy + Math.sin(boundary600) * arcR, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.strokeStyle = '#eab308';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Tick marks with labels
+  const tickValues = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+  for (let i = 0; i < tickValues.length; i++) {
+    const frac = tickValues[i] / range;
+    const ang = startAngle + (endAngle - startAngle) * frac;
+    const isMajor = i % 5 === 0 || i === 0 || i === tickValues.length - 1;
+    const inner = isMajor ? arcR - 14 : arcR - 10;
+    const outer = arcR - 4;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ang) * inner, cy + Math.sin(ang) * inner);
+    ctx.lineTo(cx + Math.cos(ang) * outer, cy + Math.sin(ang) * outer);
+    ctx.strokeStyle = isMajor ? '#64748b' : '#334155';
+    ctx.lineWidth = isMajor ? 2 : 1;
+    ctx.stroke();
+
+    // Label for major ticks
+    if (isMajor || tickValues[i] === 300 || tickValues[i] === 600) {
+      ctx.save();
+      ctx.translate(cx + Math.cos(ang) * (arcR - 20), cy + Math.sin(ang) * (arcR - 20));
+      ctx.fillStyle = tickValues[i] === 600 ? '#ef4444' : tickValues[i] === 300 ? '#eab308' : '#64748b';
+      ctx.font = tickValues[i] === 300 || tickValues[i] === 600 ? 'bold 9px Inter, sans-serif' : '8px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tickValues[i], 0, 0);
+      ctx.restore();
+    }
+  }
+
+
+
+  // Needle shadow
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
+
+  // Needle
+  const needleLen = arcR * 0.78;
+  const nx = cx + Math.cos(currentAngle) * needleLen;
+  const ny = cy + Math.sin(currentAngle) * needleLen;
+  const nw = cx + Math.cos(currentAngle + Math.PI / 2) * 2.5;
+  const ne = cy + Math.sin(currentAngle + Math.PI / 2) * 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - Math.cos(currentAngle) * 8, cy - Math.sin(currentAngle) * 8);
+  ctx.lineTo(nw, ne);
+  ctx.lineTo(nx, ny);
+  ctx.lineTo(cx - Math.cos(currentAngle - Math.PI / 2) * 2.5, cy - Math.sin(currentAngle - Math.PI / 2) * 2.5);
+  ctx.closePath();
+  const needleGrad = ctx.createLinearGradient(cx, cy, nx, ny);
+  needleGrad.addColorStop(0, '#f1f5f9');
+  needleGrad.addColorStop(0.6, '#cbd5e1');
+  needleGrad.addColorStop(1, '#94a3b8');
+  ctx.fillStyle = needleGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // Needle highlight line
+  ctx.beginPath();
+  ctx.moveTo(cx + Math.cos(currentAngle) * 4, cy + Math.sin(currentAngle) * 4);
+  ctx.lineTo(nx, ny);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Center hub - outer ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+  const hubGrad = ctx.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, 10);
+  hubGrad.addColorStop(0, '#475569');
+  hubGrad.addColorStop(1, '#0f172a');
+  ctx.fillStyle = hubGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Center hub - inner dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#64748b';
+  ctx.fill();
+}
+
+// ====== Chart ======
+const chartCtx = document.getElementById('historyChart').getContext('2d');
+const historyChart = new Chart(chartCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Gas Level (ppm)',
+      data: [],
+      borderColor: '#22c55e',
+      backgroundColor: 'rgba(34,197,94,0.1)',
+      borderWidth: 2,
+      fill: true,
+      tension: 0.3,
+      pointRadius: 2,
+      pointBackgroundColor: '#22c55e'
+    }]
+  },
+  plugins: [{
+    id: 'thresholdLines',
+    afterDraw(c) {
+      if (!c.chartArea || !c.scales || !c.scales.y) return;
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { y } } = c;
+      const drawLine = (yVal, color, label) => {
+        const yPos = y.getPixelForValue(yVal);
+        if (yPos < top || yPos > bottom) return;
+        ctx.save();
+        ctx.setLineDash([8, 5]);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(left, yPos);
+        ctx.lineTo(right, yPos);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(label, right - 80, yPos - 6);
+        ctx.restore();
+      };
+      drawLine(300, '#eab308', 'WARNING 300');
+      drawLine(600, '#ef4444', 'DANGER 600');
+    }
+  }],
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        ticks: { color: '#64748b', maxTicksLimit: 6, font: { size: 11 } },
+        grid: { color: '#1e293b', display: false }
+      },
+      y: {
+        min: 0,
+        max: 1000,
+        ticks: { color: '#64748b', font: { size: 11 }, maxTicksLimit: 5 },
+        grid: { color: '#1e293b' }
+      }
+    }
+  }
+});
+
+function updateChart(level) {
+  const now = new Date();
+  const ts = now.getHours().toString().padStart(2,'0') + ':' +
+             now.getMinutes().toString().padStart(2,'0') + ':' +
+             now.getSeconds().toString().padStart(2,'0');
+  historyData.push(level);
+  if (historyData.length > HISTORY_POINTS) historyData.shift();
+
+  const labels = historyData.map((_, i) => {
+    const offset = historyData.length - 1 - i;
+    if (offset === 0) return 'now';
+    if (offset % 5 === 0) return offset + 's ago';
+    return '';
+  }).reverse();
+
+  historyChart.data.labels = labels;
+  historyChart.data.datasets[0].data = historyData;
+
+  // Color the line based on latest level
+  const clr = level >= THRESHOLD_WARN ? '#ef4444' :
+              level >= THRESHOLD_SAFE ? '#eab308' : '#22c55e';
+  historyChart.data.datasets[0].borderColor = clr;
+  historyChart.data.datasets[0].pointBackgroundColor = clr;
+
+  historyChart.update();
+}
+
+let eventCounter = 0;
+
+function pad(n) { return n.toString().padStart(2, '0'); }
+
+function addLog(level, status, msg, valveState, action) {
+  const now = new Date();
+  const ts = pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' +
+             pad(now.getSeconds()) + '.' +
+             now.getMilliseconds().toString().padStart(3, '0');
+  eventCounter++;
+  const eid = 'EVT-' + String(eventCounter).padStart(4, '0');
+  logEntries.push({
+    ts, eid, status, level, msg,
+    valve: valveState !== undefined ? valveState : state.relayState,
+    action: action || '—'
+  });
+  if (logEntries.length > MAX_LOG) logEntries.shift();
+  renderJournal();
+}
+
+function severityClass(s) {
+  if (s === 'danger') return 'severity-danger';
+  if (s === 'warning') return 'severity-warning';
+  return 'severity-safe';
+}
+
+function severityLabel(s) {
+  if (s === 'danger') return 'CRITICAL';
+  if (s === 'warning') return 'WARNING';
+  return 'NORMAL';
+}
+
+function renderJournal() {
+  const tbody = document.getElementById('journalBodyTbody');
+  tbody.innerHTML = logEntries.slice().reverse().map(e =>
+    `<tr>
+      <td class="timestamp-cell">${e.ts}</td>
+      <td class="event-id">${e.eid}</td>
+      <td><span class="severity-badge ${severityClass(e.status)}">${severityLabel(e.status)}</span></td>
+      <td class="action-cell">${e.msg}</td>
+      <td style="color:#e2e8f0;font-weight:600;">${e.level}</td>
+      <td class="${e.valve ? 'valve-open' : 'valve-closed'}">${e.valve ? 'OPEN' : 'CLOSED'}</td>
+      <td class="action-cell">${e.action}</td>
+    </tr>`
+  ).join('');
+}
+
+// ====== UI Update ======
+function updateUI(level) {
+  const clamped = Math.min(Math.max(level, 0), 1000);
+
+  // Alarm banner
+  let newStatus = 'safe';
+  if (level >= THRESHOLD_WARN) newStatus = 'danger';
+  else if (level >= THRESHOLD_SAFE) newStatus = 'warning';
+
+  alarmStatus = newStatus;
+
+  const banner = document.getElementById('alarmBanner');
+  banner.className = 'alarm-banner ' + newStatus;
+  const texts = {
+    safe: '✓ SYSTEM SAFE — Normal Operation',
+    warning: '⚠ WARNING — Elevated Gas Level Detected',
+    danger: '🚨 DANGER — Gas Leak! Immediate Action Required'
+  };
+  banner.textContent = texts[newStatus];
+
+  // Gas value display
+  document.getElementById('gasValueDisplay').textContent = clamped;
+
+  // Gauge
+  drawGauge(clamped);
+
+  // Status items
+  const relayEl = document.getElementById('relayStatus');
+  relayEl.textContent = state.relayState ? 'OPEN' : 'CLOSED';
+  relayEl.className = 'value ' + (state.relayState ? 'open' : 'closed');
+
+  document.getElementById('modeDisplay').textContent = state.currentMode;
+  const modeColors = { AUTO: '#22c55e', MANUAL: '#f59e0b', TIMER: '#3b82f6' };
+  document.getElementById('modeDisplay').style.color = modeColors[state.currentMode];
+
+  const levelColors = { safe: '#22c55e', warning: '#eab308', danger: '#ef4444' };
+  document.getElementById('gasLevelStatus').textContent = clamped + ' ppm';
+  document.getElementById('gasLevelStatus').style.color = levelColors[newStatus];
+
+  const buzzerEl = document.getElementById('buzzerStatus');
+  buzzerEl.textContent = state.buzzerState ? 'ON' : 'OFF';
+  buzzerEl.style.color = state.buzzerState ? '#ef4444' : '#22c55e';
+
+  // Mode buttons
+  document.querySelectorAll('.btn-mode').forEach(b => {
+    b.className = 'btn-mode';
+    if (b.dataset.mode === state.currentMode) {
+      b.className = 'btn-mode active-' + state.currentMode.toLowerCase();
+    }
+  });
+
+  // Manual buttons
+  document.getElementById('btnManualOn').disabled = state.currentMode !== 'MANUAL';
+  document.getElementById('btnManualOff').disabled = state.currentMode !== 'MANUAL';
+
+  // Update chart
+  updateChart(clamped);
+}
+
+// ====== Core Logic ======
+function runAutoLogic(level) {
+  const shouldTrigger = level >= THRESHOLD_WARN;
+  if (shouldTrigger !== state.relayState) {
+    state.relayState = shouldTrigger;
+    state.buzzerState = shouldTrigger;
+    const action = shouldTrigger ? 'Valve CLOSED — supply shut off' : 'Valve OPEN — normal flow';
+    addLog(level, alarmStatus, 'Gas level ' + (shouldTrigger ? 'exceeded threshold' : 'returned to normal'),
+           shouldTrigger, action);
+  }
+}
+
+function manualOn() {
+  if (state.currentMode !== 'MANUAL') return;
+  state.relayState = true;
+  state.buzzerState = true;
+  addLog(state.gasLevel, alarmStatus, 'Manual override engaged', true, 'Valve CLOSED — manual ON');
+  updateUI(state.gasLevel);
+}
+
+function manualOff() {
+  if (state.currentMode !== 'MANUAL') return;
+  state.relayState = false;
+  state.buzzerState = false;
+  addLog(state.gasLevel, alarmStatus, 'Manual override released', false, 'Valve OPEN — manual OFF');
+  updateUI(state.gasLevel);
+}
+
+function setMode(mode) {
+  if (mode === 'TIMER') {
+    state.currentMode = 'TIMER';
+    state.timerActive = false;
+    addLog(state.gasLevel, alarmStatus, 'System mode: TIMER (set duration below)',
+           state.relayState, 'TIMER mode ready');
+    updateUI(state.gasLevel);
+    document.getElementById('timerInput').focus();
+    return;
+  }
+  state.currentMode = mode;
+  state.timerActive = false;
+  if (mode === 'AUTO') {
+    state.manualOverride = false;
+    runAutoLogic(state.gasLevel);
+  }
+  addLog(state.gasLevel, alarmStatus, `System mode: ${mode}`,
+         state.relayState, mode + ' mode activated');
+  updateUI(state.gasLevel);
+}
+
+function setTimer() {
+  const input = document.getElementById('timerInput');
+  const seconds = parseInt(input.value);
+  if (!seconds || seconds < 1) return;
+
+  state.currentMode = 'TIMER';
+  state.timerActive = true;
+  state.timerEndTime = Date.now() + seconds * 1000;
+  state.relayState = true;
+  state.buzzerState = true;
+
+  addLog(state.gasLevel, alarmStatus, `Timer: ${seconds}s delay`,
+         true, 'Valve CLOSED for ' + seconds + 's');
+  updateUI(state.gasLevel);
+}
+
+function simulateButtonPress() {
+  if (state.currentMode === 'MANUAL') {
+    state.relayState = !state.relayState;
+    state.buzzerState = state.relayState;
+    const action = state.relayState ? 'Valve CLOSED — button' : 'Valve OPEN — button';
+    addLog(state.gasLevel, alarmStatus, 'Physical button pressed',
+           state.relayState, action);
+    updateUI(state.gasLevel);
+  } else {
+    state.currentMode = 'MANUAL';
+    state.relayState = !state.relayState;
+    state.buzzerState = state.relayState;
+    const action = state.relayState ? 'Valve CLOSED — button' : 'Valve OPEN — button';
+    addLog(state.gasLevel, alarmStatus, 'Physical button (forced MANUAL)',
+           state.relayState, action);
+    updateUI(state.gasLevel);
+  }
+}
+
+let expandedSource = null;
+
+function expandCard(name) {
+  if (expandedSource) restoreExpanded();
+
+  const cards = {
+    gauge: { title: 'Gas Level (Gauge)', selector: '[data-card="gauge"] .gauge-wrapper' },
+    controls: { title: 'System Status & Controls', selector: '[data-card="controls"] .controls-body' },
+    chart: { title: 'Gas Level History', selector: '[data-card="chart"] .chart-container' },
+    journal: { title: 'Alarm Journal', selector: '[data-card="journal"] .journal-wrapper' }
+  };
+  const card = cards[name];
+  if (!card) return;
+  const el = document.querySelector(card.selector);
+  if (!el) return;
+
+  const parent = el.parentNode;
+  document.getElementById('overlayTitle').textContent = card.title;
+  const body = document.getElementById('overlayBody');
+  body.innerHTML = '';
+  body.appendChild(el);
+
+  if (name === 'chart') {
+    el.style.height = '400px';
+    setTimeout(() => historyChart.resize(), 50);
+  }
+
+  expandedSource = { el, parent };
+  document.getElementById('fullscreenOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function restoreExpanded() {
+  if (!expandedSource) return;
+  const body = document.getElementById('overlayBody');
+  body.innerHTML = '';
+  const { el, parent } = expandedSource;
+  if (parent) parent.appendChild(el);
+  if (el && el.style) {
+    el.style.height = '';
+  }
+  expandedSource = null;
+}
+
+function closeOverlay() {
+  if (!expandedSource) return;
+  document.getElementById('fullscreenOverlay').classList.remove('open');
+  restoreExpanded();
+  setTimeout(() => historyChart.resize(), 50);
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && expandedSource) closeOverlay();
+});
+
+// ====== Simulation ======
+function simulateReading() {
+  // Base level with occasional spikes and dips
+  const base = 150 + Math.random() * 100;
+  const spike = Math.random();
+  let level;
+
+  if (spike < 0.05) {
+    level = 700 + Math.random() * 250; // Danger spike
+  } else if (spike < 0.12) {
+    level = 350 + Math.random() * 200; // Warning spike
+  } else if (spike < 0.18) {
+    level = Math.random() * 80; // Dip / normal
+  } else {
+    level = base + (Math.random() - 0.5) * 60;
+  }
+
+  level = Math.round(Math.max(0, level));
+  state.gasLevel = level;
+
+  // Mode logic
+  if (state.currentMode === 'AUTO') {
+    runAutoLogic(level);
+  }
+
+  // Timer expiry check
+  if (state.timerActive && state.currentMode === 'TIMER') {
+    if (Date.now() >= state.timerEndTime) {
+      state.timerActive = false;
+      state.relayState = false;
+      state.buzzerState = false;
+      state.currentMode = 'AUTO';
+      addLog(level, 'safe', 'Timer expired — auto-revert',
+             false, 'Returned to AUTO mode');
+    }
+  }
+
+  updateUI(level);
+}
+
+// ====== Node Status ======
+const startTime = Date.now();
+let syncCycle = 0;
+
+function updateNodeStatus() {
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('uptimeDisplay').textContent = h + ':' + m + ':' + s;
+
+  syncCycle++;
+  const syncIcon = document.getElementById('syncIcon');
+  const syncText = document.getElementById('lastSyncText');
+  if (syncCycle % 10 === 0) {
+    syncIcon.className = 'sync-icon syncing';
+    syncText.textContent = 'syncing...';
+    setTimeout(() => {
+      syncIcon.className = 'sync-icon';
+      syncText.textContent = 'just now';
+    }, 600);
+  } else if (syncCycle % 2 === 0) {
+    const secs = Math.floor(elapsed / 10) * 10;
+    if (secs > 0) syncText.textContent = secs + 's ago';
+  }
+
+  const rssi = -30 - Math.floor(Math.random() * 35);
+  const bars = document.querySelectorAll('#signalBars .bar');
+  const activeBars = rssi > -45 ? 4 : rssi > -55 ? 3 : rssi > -65 ? 2 : 1;
+  bars.forEach((b, i) => b.classList.toggle('active', i < activeBars));
+  document.getElementById('signalValue').textContent = rssi + ' dBm';
+
+  const badge = document.getElementById('securityBadge');
+  if (state.gasLevel >= THRESHOLD_WARN) {
+    badge.className = 'security-badge security-breach';
+    badge.textContent = '⚠ BREACH';
+  } else if (state.gasLevel >= THRESHOLD_SAFE) {
+    badge.className = 'security-badge security-warning';
+    badge.textContent = '⚠ WARNING';
+  } else {
+    badge.className = 'security-badge security-secure';
+    badge.textContent = '✓ SECURE';
+  }
+}
+
+// ====== CSV Export ======
+function exportCSV() {
+  const headers = ['Timestamp', 'Event ID', 'Severity', 'Description', 'Value (ppm)', 'Valve', 'Action Taken'];
+  const rows = logEntries.map(e => [
+    e.ts, e.eid, severityLabel(e.status), '"' + e.msg.replace(/"/g, '""') + '"',
+    e.level, e.valve ? 'OPEN' : 'CLOSED', '"' + (e.action || '').replace(/"/g, '""') + '"'
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'alarm_journal_' + new Date().toISOString().slice(0, 19).replace(/[:-]/g, '') + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ====== Init ======
+addLog(0, 'safe', 'Edge node ESP32GasDetector-001 boot — SIMULATION', false, 'System boot');
+addLog(0, 'safe', 'Fleet: LPG-Monitor-West | Firmware: v2.1.0 | Security: SECURE', false, 'Configuration loaded');
+addLog(0, 'safe', 'Thresholds: SAFE <300  WARNING 300–600  DANGER 600+', false, 'Thresholds set');
+drawGauge(0);
+updateNodeStatus();
+setInterval(simulateReading, 1000);
+setInterval(updateNodeStatus, 1000);
+</script>
+</body>
+</html>
