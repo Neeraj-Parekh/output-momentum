@@ -8,6 +8,7 @@ import {
 // --- CONFIG ---
 const STORAGE_KEY = 'execution_dashboard_v1';
 const THEME_KEY = 'execution_dashboard_theme';
+const PIN_KEY = 'execution_dashboard_pin';
 
 const TAG_COLORS = {
   completed: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
@@ -144,6 +145,17 @@ export default function App() {
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
 
+  // PIN Lock
+  const [isLocked, setIsLocked] = useState(() => {
+    return !!localStorage.getItem(PIN_KEY);
+  });
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+  const [isSettingPin, setIsSettingPin] = useState(() => {
+    return !localStorage.getItem(PIN_KEY);
+  });
+  const [pinConfirm, setPinConfirm] = useState('');
+
   // Load Main Data
   const [data, setData] = useState(() => {
     try {
@@ -199,6 +211,144 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [data]);
+
+  // PIN Lock helpers
+  const simpleHash = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    return 'pin_' + Math.abs(hash).toString(36);
+  };
+
+  const handleSetPin = () => {
+    if (pinInput.length >= 4 && pinInput === pinConfirm) {
+      localStorage.setItem(PIN_KEY, simpleHash(pinInput));
+      setIsSettingPin(false);
+      setIsLocked(false);
+      setPinInput('');
+      setPinConfirm('');
+      setPinError(false);
+    } else {
+      setPinError(true);
+    }
+  };
+
+  const handleUnlock = () => {
+    const stored = localStorage.getItem(PIN_KEY);
+    if (stored === simpleHash(pinInput)) {
+      setIsLocked(false);
+      setPinInput('');
+      setPinError(false);
+    } else {
+      setPinError(true);
+      setPinInput('');
+    }
+  };
+
+  const handleRemovePin = () => {
+    localStorage.removeItem(PIN_KEY);
+    setIsLocked(false);
+    setIsSettingPin(false);
+  };
+
+  const handlePinKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (isSettingPin) {
+        handleSetPin();
+      } else {
+        handleUnlock();
+      }
+    }
+  };
+
+  // --- PIN LOCK SCREEN ---
+  const renderLockScreen = () => {
+    if (!isLocked && !isSettingPin) return null;
+    return (
+      <div className="fixed inset-0 bg-[#060606] flex items-center justify-center z-[100] p-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center">
+              <span className="text-2xl">🔒</span>
+            </div>
+            <h1 className="text-xl font-black text-white tracking-tight">EXECUTION DASHBOARD</h1>
+            <p className="text-xs text-gray-500 mt-1">
+              {isSettingPin ? 'Set a PIN to protect your data' : 'Enter PIN to unlock'}
+            </p>
+          </div>
+
+          {isSettingPin ? (
+            <div className="space-y-3">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={8}
+                value={pinInput}
+                onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(false); }}
+                onKeyDown={handlePinKeyDown}
+                placeholder="Set PIN (4+ digits)"
+                autoFocus
+                className="w-full p-3 bg-gray-900 border border-gray-800 focus:border-blue-500 rounded-xl outline-none text-center text-lg tracking-[0.3em] text-white placeholder-gray-600 transition-all"
+              />
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={8}
+                value={pinConfirm}
+                onChange={(e) => { setPinConfirm(e.target.value.replace(/\D/g, '')); setPinError(false); }}
+                onKeyDown={handlePinKeyDown}
+                placeholder="Confirm PIN"
+                className="w-full p-3 bg-gray-900 border border-gray-800 focus:border-blue-500 rounded-xl outline-none text-center text-lg tracking-[0.3em] text-white placeholder-gray-600 transition-all"
+              />
+              {pinError && <p className="text-xs text-red-400">PINs don't match or too short (min 4 digits)</p>}
+              <button
+                onClick={handleSetPin}
+                className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-colors"
+              >
+                Set PIN & Enter
+              </button>
+              <button
+                onClick={handleRemovePin}
+                className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                Skip — no PIN
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={8}
+                value={pinInput}
+                onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(false); }}
+                onKeyDown={handlePinKeyDown}
+                placeholder="Enter PIN"
+                autoFocus
+                className="w-full p-3 bg-gray-900 border border-gray-800 focus:border-blue-500 rounded-xl outline-none text-center text-lg tracking-[0.3em] text-white placeholder-gray-600 transition-all"
+              />
+              {pinError && <p className="text-xs text-red-400">Wrong PIN</p>}
+              <button
+                onClick={handleUnlock}
+                className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-colors"
+              >
+                Unlock
+              </button>
+              <button
+                onClick={handleRemovePin}
+                className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                Forgot PIN? Reset
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // State helpers
   const updateItem = (section, id, field, value) => {
@@ -502,13 +652,13 @@ export default function App() {
           </div>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
-          <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
+          <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-gray-50/50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
-                <th className="p-3 w-7/12">Habit</th>
-                <th className="p-3 w-2/12 text-center">Status</th>
-                <th className="p-3 w-2/12">Tag</th>
-                <th className="p-3 w-1/12 text-center">Actions</th>
+                <th className="p-3 min-w-[140px]">Habit</th>
+                <th className="p-3 w-16 text-center">Status</th>
+                <th className="p-3 w-20 hidden sm:table-cell">Tag</th>
+                <th className="p-3 w-12 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800/50">
@@ -531,7 +681,7 @@ export default function App() {
                         {h.status || '-'}
                       </button>
                     </td>
-                    <td className="p-3">
+                    <td className="p-3 hidden sm:table-cell">
                       <Tag value={h.tag} editable onChange={(v) => updateItem('habits', h.id, 'tag', v)} />
                     </td>
                     <td className="p-3 text-center">
@@ -573,7 +723,7 @@ export default function App() {
           <p className="text-xs text-gray-400 dark:text-gray-500">Quantifiable concentration blocks. Plan vs Actual in minutes.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
-          <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
+          <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-gray-50/50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
                 <th className="p-3 w-2/12">Date</th>
@@ -685,7 +835,7 @@ export default function App() {
           <p className="text-xs text-gray-400 dark:text-gray-500">Track algorithmic efficiency, optimization metrics, and weaknesses.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
-          <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
+          <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-gray-50/50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
                 <th className="p-3">Topic / Pattern</th>
@@ -738,7 +888,7 @@ export default function App() {
           <p className="text-xs text-gray-400 dark:text-gray-500">Track syllabus completion & performance benchmark values.</p>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
-          <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
+          <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-gray-50/50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
                 <th className="p-3">Subject</th>
@@ -794,7 +944,7 @@ export default function App() {
             <p className="text-xs text-gray-400 dark:text-gray-500">Log algorithm construction and mathematical intuition.</p>
           </div>
           <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
-            <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
+            <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="bg-gray-50/50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
                   <th className="p-3">Topic</th>
@@ -845,7 +995,7 @@ export default function App() {
             <p className="text-xs text-gray-400 dark:text-gray-500">Track structural components and deliverable lifecycles.</p>
           </div>
           <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
-            <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
+            <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="bg-gray-50/50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
                   <th className="p-3">Repository / Project</th>
@@ -1681,6 +1831,22 @@ export default function App() {
               >
                 <RefreshCw size={13} /> Clear Slate
               </button>
+              <button 
+                onClick={() => { setIsLocked(true); setPinInput(''); }}
+                className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg bg-white dark:bg-gray-900 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="Lock dashboard"
+              >
+                🔒 Lock
+              </button>
+              {localStorage.getItem(PIN_KEY) && (
+                <button 
+                  onClick={() => { localStorage.removeItem(PIN_KEY); setIsSettingPin(true); setIsLocked(true); setPinInput(''); setPinConfirm(''); }}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg bg-white dark:bg-gray-900 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  title="Change PIN"
+                >
+                  🔄 PIN
+                </button>
+              )}
             </div>
             <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileSelected} className="hidden" />
           </header>
@@ -1723,6 +1889,7 @@ export default function App() {
           {renderImportConfirmModal()}
         </div>
       </div>
+      {renderLockScreen()}
     </div>
   );
 }
