@@ -23,62 +23,29 @@ const TAG_COLORS = {
 };
 
 const OUTPUT_CATEGORIES = ['DSA', 'GATE', 'ML', 'Python', 'Project', 'Hardware', 'Communication', 'Internship', 'Other'];
+const FREQUENCIES = [
+  { value: 'daily', label: 'Every Day' },
+  { value: 'weekdays', label: 'Weekdays (Mon–Fri)' },
+  { value: 'weekends', label: 'Weekends (Sat–Sun)' },
+  { value: 'custom', label: 'Custom Days' },
+];
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const DEFAULT_DATA = {
-  habits: [
-    { id: 'h1', habit: 'Wake before 6', status: '✓', tag: 'completed', details: {} },
-    { id: 'h2', habit: 'No phone morning', status: '✗', tag: 'missed', details: { notes: 'Failed: checked YouTube at 6:15 AM' } },
-    { id: 'h3', habit: 'GATE block', status: '✓', tag: 'deep work', details: { notes: 'Networks focus' } },
-    { id: 'h4', habit: 'DSA', status: '✓', tag: 'technical', details: { notes: 'Sliding window revision' } },
-    { id: 'h5', habit: 'Python/code', status: '-', tag: 'default', details: {} },
-    { id: 'h6', habit: 'Gym/walk', status: '-', tag: 'default', details: {} },
-    { id: 'h7', habit: 'Project work', status: '-', tag: 'project', details: {} },
-    { id: 'h8', habit: 'Phone away 1 hr', status: '-', tag: 'default', details: {} },
-    { id: 'h9', habit: 'Sleep before 11:30', status: '-', tag: 'default', details: {} },
-  ],
-  deepWork: [
-    { id: 'dw1', date: 'May 26', task: 'Networks PYQ', planned: '90', actual: '75', focus: '7/10', details: { notes: 'Lost focus near end.', blockers: 'Math formulation' } },
-  ],
-  oneThing: [
-    { id: 'ot1', date: 'May 26', moved: 'solved 3 DSA sliding window problems', details: {} },
-    { id: 'ot2', date: 'May 27', moved: 'finished Laplace visualization script', details: {} },
-  ],
-  dsa: [
-    { id: 'dsa1', topic: 'Arrays', problems: '12', weakness: 'medium optimization', tag: 'review needed', details: {} },
-    { id: 'dsa2', topic: 'Sliding Window', problems: '5', weakness: 'confusion in boundaries', tag: 'technical', details: {} },
-  ],
-  gate: [
-    { id: 'gate1', subject: 'Networks', theory: '70%', pyq: '45', confidence: '7/10', tag: 'deep work', details: {} },
-    { id: 'gate2', subject: 'Signals', theory: '40%', pyq: '15', confidence: '4/10', tag: 'review needed', details: {} },
-  ],
-  ml: [
-    { id: 'ml1', topic: 'Linear Regression', built: 'Yes', understood: 'Yes', tag: 'completed', details: {} },
-    { id: 'ml2', topic: 'Logistic Regression', built: 'Partial', understood: 'Medium', tag: 'review needed', details: {} },
-  ],
-  projects: [
-    { id: 'proj1', project: 'SAR visualization', status: 'cleanup', tag: 'project', details: {} },
-    { id: 'proj2', project: 'ISL pipeline', status: 'partial', tag: 'project', details: {} },
-    { id: 'proj3', project: 'WiFi optimization', status: 'archived', tag: 'archived', details: {} },
-  ],
-  antiDmn: [
-    { id: 'dmn1', trigger: 'YouTube spiral', happened: 'watched random ML videos', recovery: 'phone away + walk', tag: 'attention issue', details: {} },
-    { id: 'dmn2', trigger: 'new project urge', happened: 'wanted new repo', recovery: 'wrote in someday.txt', tag: 'completed', details: {} },
-  ],
-  someday: [
-    { id: 'sd1', idea: 'Drone architecture improvement', logged: true, details: {} },
-    { id: 'sd2', idea: 'New ML repo urge', logged: true, details: {} },
-  ],
-  outputLog: [
-    { id: 'ol1', date: 'May 29', category: 'DSA', quantity: '3 Problems', evidence: 'Sliding window set', details: {} },
-    { id: 'ol2', date: 'May 29', category: 'GATE', quantity: '15 PYQs', evidence: 'Networks practice', details: {} },
-  ],
-  pivotTimeline: [
-    { id: 'pt1', date: 'May 29', decision: 'Started DSA focused practice', details: {} },
-    { id: 'pt2', date: 'May 29', decision: 'Added Output Momentum layer to dashboard', details: {} },
-  ],
+  habits: [],
+  deepWork: [],
+  oneThing: [],
+  dsa: [],
+  gate: [],
+  ml: [],
+  projects: [],
+  antiDmn: [],
+  someday: [],
+  outputLog: [],
+  pivotTimeline: [],
   realityCheck: [],
   completedOutputs: [],
-  currentFocus: 'Networks',
+  currentFocus: '',
   weeklyReset: { moved: '', friction: '', remove: '' }
 };
 
@@ -156,6 +123,17 @@ export default function App() {
   });
   const [pinConfirm, setPinConfirm] = useState('');
 
+  // New Habit Modal
+  const [showNewHabit, setShowNewHabit] = useState(false);
+  const [newHabitName, setNewHabitName] = useState('');
+  const [newHabitFreq, setNewHabitFreq] = useState('daily');
+  const [newHabitDays, setNewHabitDays] = useState([1, 2, 3, 4, 5]);
+  const [newHabitStartDate, setNewHabitStartDate] = useState(() => {
+    const d = new Date();
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  });
+  const [newHabitEndDate, setNewHabitEndDate] = useState('');
+
   // Load Main Data
   const [data, setData] = useState(() => {
     try {
@@ -195,6 +173,7 @@ export default function App() {
         setShowResetConfirm(false);
         setShowWeeklyReset(false);
         setShowImportConfirm(false);
+        setShowNewHabit(false);
         setPendingImportData(null);
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
@@ -381,6 +360,37 @@ export default function App() {
     }));
   };
 
+  const openNewHabitModal = () => {
+    const today = new Date();
+    setNewHabitName('');
+    setNewHabitFreq('daily');
+    setNewHabitDays([1, 2, 3, 4, 5]);
+    setNewHabitStartDate(formatMonthDay(today.getFullYear(), today.getMonth(), today.getDate()));
+    setNewHabitEndDate('');
+    setShowNewHabit(true);
+  };
+
+  const handleCreateHabit = () => {
+    const name = newHabitName.trim();
+    if (!name) return;
+    const freq = newHabitFreq;
+    const days = freq === 'weekdays' ? [1, 2, 3, 4, 5]
+      : freq === 'weekends' ? [0, 6]
+      : freq === 'custom' ? newHabitDays
+      : [0, 1, 2, 3, 4, 5, 6];
+    addItem('habits', {
+      habit: name,
+      status: '-',
+      tag: 'default',
+      frequency: freq,
+      days,
+      startDate: newHabitStartDate,
+      endDate: newHabitEndDate,
+      details: {}
+    });
+    setShowNewHabit(false);
+  };
+
   const cycleHabitStatus = (id, currentStatus) => {
     const nextMap = { '-': '✓', '✓': '✗', '✗': '-' };
     const next = nextMap[currentStatus] || '-';
@@ -527,6 +537,32 @@ export default function App() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  const parseSelectedDate = (dateStr) => {
+    if (!dateStr) return null;
+    const parts = dateStr.split(' ');
+    if (parts.length !== 2) return null;
+    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[0]);
+    const day = parseInt(parts[1], 10);
+    if (monthIdx === -1 || isNaN(day)) return null;
+    return { year: calendarYear, month: monthIdx, day };
+  };
+
+  const getDueHabitsForSelectedDate = () => {
+    const parsed = parseSelectedDate(selectedDate);
+    if (!parsed) return [];
+    return data.habits.filter(h => isHabitDueOnDate(h, parsed.year, parsed.month, parsed.day));
+  };
+
+  const isHabitDueOnDate = (habit, year, month, day) => {
+    if (!habit.frequency && !habit.days) return false;
+    const date = new Date(year, month, day);
+    const dow = date.getDay();
+    if (habit.startDate && new Date(habit.startDate + ', ' + year) > date) return false;
+    if (habit.endDate && new Date(habit.endDate + ', ' + year) < date) return false;
+    const days = habit.days && habit.days.length > 0 ? habit.days : [0, 1, 2, 3, 4, 5, 6];
+    return days.includes(dow);
+  };
+
   const getEntriesForDate = (dateStr) => {
     const entries = [];
     data.habits.forEach(h => { if (h.date === dateStr) entries.push({ type: 'Habit', text: h.habit }); });
@@ -540,7 +576,8 @@ export default function App() {
 
   const hasEntriesOnDay = (year, month, day) => {
     const dateStr = formatMonthDay(year, month, day);
-    return getEntriesForDate(dateStr).length > 0;
+    if (getEntriesForDate(dateStr).length > 0) return true;
+    return data.habits.some(h => isHabitDueOnDate(h, year, month, day));
   };
 
   // --- RENDERERS ---
@@ -627,10 +664,16 @@ export default function App() {
         {selectedDate && (
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Entries for {selectedDate}</h3>
-            {getEntriesForDate(selectedDate).length === 0 ? (
+            {getEntriesForDate(selectedDate).length === 0 && getDueHabitsForSelectedDate().length === 0 ? (
               <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No entries logged for this day.</p>
             ) : (
               <div className="space-y-1.5">
+                {getDueHabitsForSelectedDate().map((h, idx) => (
+                  <div key={`due-${idx}`} className="flex items-start gap-2 text-xs">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium shrink-0">Due</span>
+                    <span className="text-gray-700 dark:text-gray-300">{h.habit}</span>
+                  </div>
+                ))}
                 {getEntriesForDate(selectedDate).map((entry, idx) => (
                   <div key={idx} className="flex items-start gap-2 text-xs">
                     <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-medium shrink-0">{entry.type}</span>
@@ -672,6 +715,15 @@ export default function App() {
                   <tr key={h.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors group">
                     <td className="p-3">
                       <EditableCell value={h.habit} onChange={(v) => updateItem('habits', h.id, 'habit', v)} />
+                      {h.frequency && (
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 font-medium">
+                          {h.frequency === 'daily' && 'Every day'}
+                          {h.frequency === 'weekdays' && 'Mon–Fri'}
+                          {h.frequency === 'weekends' && 'Sat–Sun'}
+                          {h.frequency === 'custom' && (h.days || []).map(d => DAY_NAMES[d]).join(' ')}
+                          {h.endDate ? ` · until ${h.endDate}` : (h.startDate ? ` · from ${h.startDate}` : '')}
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 text-center">
                       <button 
@@ -708,8 +760,8 @@ export default function App() {
             </tbody>
           </table>
         </div>
-        <button 
-          onClick={() => addItem('habits', { habit: '', status: '-', tag: 'default', details: {} })} 
+        <button
+          onClick={openNewHabitModal}
           className="mt-3 w-full p-2.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 border border-dashed border-gray-200 dark:border-gray-800 hover:border-blue-400 dark:hover:border-blue-500/50 rounded-lg flex items-center justify-center gap-1.5 transition-colors font-semibold"
         >
           <Plus size={14} /> Add Habit
@@ -1766,6 +1818,121 @@ export default function App() {
     );
   };
 
+  // --- NEW HABIT MODAL ---
+  const renderNewHabitModal = () => {
+    if (!showNewHabit) return null;
+    const toggleDay = (d) => {
+      setNewHabitDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
+    };
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div className="bg-white dark:bg-gray-950 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-blue-500/20 p-6 space-y-5">
+          <div className="flex items-center gap-3 text-blue-500">
+            <Plus size={28} />
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">New Habit</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Define what, when, and how often.</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Habit Name</label>
+              <input
+                type="text"
+                value={newHabitName}
+                onChange={(e) => setNewHabitName(e.target.value)}
+                placeholder="e.g. Morning DSA, Gym, Read 30m"
+                autoFocus
+                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-950"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Frequency</label>
+              <select
+                value={newHabitFreq}
+                onChange={(e) => setNewHabitFreq(e.target.value)}
+                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-blue-500"
+              >
+                {FREQUENCIES.map(f => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {newHabitFreq === 'custom' && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Custom Days</label>
+                <div className="flex flex-wrap gap-2">
+                  {DAY_NAMES.map((name, idx) => {
+                    const active = newHabitDays.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => toggleDay(idx)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                          active
+                            ? 'bg-blue-500 text-white border-blue-500'
+                            : 'bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800'
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Start</label>
+                <input
+                  type="text"
+                  value={newHabitStartDate}
+                  onChange={(e) => setNewHabitStartDate(e.target.value)}
+                  placeholder="Jan 1"
+                  className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">End (opt)</label>
+                <input
+                  type="text"
+                  value={newHabitEndDate}
+                  onChange={(e) => setNewHabitEndDate(e.target.value)}
+                  placeholder="Mar 31"
+                  className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">
+              Format: "Mon D" (e.g. "Jan 5", "Mar 31"). Leave end blank for ongoing.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => setShowNewHabit(false)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-semibold transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreateHabit}
+              disabled={!newHabitName.trim()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
+            >
+              Create Habit
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={isDark ? 'dark' : ''}>
       <div className="min-h-screen bg-gray-50/50 dark:bg-[#060606] text-gray-900 dark:text-gray-100 font-sans p-3 sm:p-4 md:p-8 selection:bg-blue-500/10 selection:text-blue-500 transition-colors duration-200">
@@ -1887,6 +2054,7 @@ export default function App() {
           {renderModal()}
           {renderResetConfirmModal()}
           {renderImportConfirmModal()}
+          {renderNewHabitModal()}
         </div>
       </div>
       {renderLockScreen()}
