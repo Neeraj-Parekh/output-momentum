@@ -22,6 +22,8 @@ export default [
         Blob: 'readonly',
         FileReader: 'readonly',
         alert: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
         HTMLAnchorElement: 'readonly',
         HTMLInputElement: 'readonly',
         HTMLTextAreaElement: 'readonly',

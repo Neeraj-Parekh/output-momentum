@@ -9,6 +9,7 @@ import {
 const STORAGE_KEY = 'execution_dashboard_v1';
 const THEME_KEY = 'execution_dashboard_theme';
 const PIN_KEY = 'execution_dashboard_pin';
+const PIN_SKIPPED_KEY = 'execution_dashboard_pin_skipped';
 
 const TAG_COLORS = {
   completed: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
@@ -79,9 +80,10 @@ const Tag = ({ value, onChange, editable = false }) => {
   );
 };
 
-const EditableCell = ({ value, onChange, placeholder = "", type = "text" }) => (
+const EditableCell = ({ value, onChange, placeholder = "", type = "text", inputMode }) => (
   <input
     type={type}
+    inputMode={inputMode}
     value={value || ""}
     onChange={(e) => onChange(e.target.value)}
     placeholder={placeholder}
@@ -112,15 +114,14 @@ export default function App() {
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
 
-  // PIN Lock
-  const [isLocked, setIsLocked] = useState(() => {
-    return !!localStorage.getItem(PIN_KEY);
+  // PIN Lock: 'locked' = have PIN, need to unlock | 'unlocked' = app accessible | 'setup' = no PIN, prompt to set
+  const [pinStatus, setPinStatus] = useState(() => {
+    if (localStorage.getItem(PIN_KEY)) return 'locked';
+    if (localStorage.getItem(PIN_SKIPPED_KEY)) return 'unlocked';
+    return 'setup';
   });
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [isSettingPin, setIsSettingPin] = useState(() => {
-    return !localStorage.getItem(PIN_KEY);
-  });
   const [pinConfirm, setPinConfirm] = useState('');
 
   // New Habit Modal
@@ -138,7 +139,23 @@ export default function App() {
   const [data, setData] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : DEFAULT_DATA;
+      if (!saved) return DEFAULT_DATA;
+      const parsed = JSON.parse(saved);
+      const todayD = new Date();
+      const todayStr = `${todayD.getFullYear()}-${String(todayD.getMonth() + 1).padStart(2, '0')}-${String(todayD.getDate()).padStart(2, '0')}`;
+      if (Array.isArray(parsed.habits)) {
+        parsed.habits = parsed.habits.map(h => {
+          if (h.status !== undefined && !h.completions) {
+            const completions = {};
+            if (h.status === '✓' || h.status === '✗') completions[todayStr] = h.status;
+            const rest = { ...h };
+            delete rest.status;
+            return { ...rest, completions };
+          }
+          return h;
+        });
+      }
+      return parsed;
     } catch {
       return DEFAULT_DATA;
     }
@@ -149,9 +166,33 @@ export default function App() {
     localStorage.setItem(THEME_KEY, JSON.stringify(isDark));
   }, [isDark]);
 
-  // Persist Data
+  // Persist Data (debounced 400ms — avoid stringify on every keystroke)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (err) {
+        console.warn('Failed to persist dashboard data', err);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [data]);
+
+  // Flush pending write on tab close so the latest edit isn't lost
+  useEffect(() => {
+    const flush = () => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch {
+        // Storage may be full or unavailable; nothing we can do on unload
+      }
+    };
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('pagehide', flush);
+    };
   }, [data]);
 
   // Exports
@@ -205,8 +246,8 @@ export default function App() {
   const handleSetPin = () => {
     if (pinInput.length >= 4 && pinInput === pinConfirm) {
       localStorage.setItem(PIN_KEY, simpleHash(pinInput));
-      setIsSettingPin(false);
-      setIsLocked(false);
+      localStorage.removeItem(PIN_SKIPPED_KEY);
+      setPinStatus('unlocked');
       setPinInput('');
       setPinConfirm('');
       setPinError(false);
@@ -218,7 +259,7 @@ export default function App() {
   const handleUnlock = () => {
     const stored = localStorage.getItem(PIN_KEY);
     if (stored === simpleHash(pinInput)) {
-      setIsLocked(false);
+      setPinStatus('unlocked');
       setPinInput('');
       setPinError(false);
     } else {
@@ -227,17 +268,21 @@ export default function App() {
     }
   };
 
-  const handleRemovePin = () => {
+  const handleSkipPin = () => {
+    localStorage.setItem(PIN_SKIPPED_KEY, '1');
+    setPinStatus('unlocked');
+  };
+
+  const handleForgotPin = () => {
     localStorage.removeItem(PIN_KEY);
-    setIsLocked(false);
-    setIsSettingPin(false);
+    setPinStatus('unlocked');
   };
 
   const handlePinKeyDown = (e) => {
     if (e.key === 'Enter') {
-      if (isSettingPin) {
+      if (pinStatus === 'setup') {
         handleSetPin();
-      } else {
+      } else if (pinStatus === 'locked') {
         handleUnlock();
       }
     }
@@ -245,7 +290,7 @@ export default function App() {
 
   // --- PIN LOCK SCREEN ---
   const renderLockScreen = () => {
-    if (!isLocked && !isSettingPin) return null;
+    if (pinStatus === 'unlocked') return null;
     return (
       <div className="fixed inset-0 bg-[#060606] flex items-center justify-center z-[100] p-4">
         <div className="w-full max-w-sm text-center">
@@ -255,11 +300,11 @@ export default function App() {
             </div>
             <h1 className="text-xl font-black text-white tracking-tight">EXECUTION DASHBOARD</h1>
             <p className="text-xs text-gray-500 mt-1">
-              {isSettingPin ? 'Set a PIN to protect your data' : 'Enter PIN to unlock'}
+              {pinStatus === 'setup' ? 'Set a PIN to protect your data' : 'Enter PIN to unlock'}
             </p>
           </div>
 
-          {isSettingPin ? (
+          {pinStatus === 'setup' ? (
             <div className="space-y-3">
               <input
                 type="password"
@@ -290,7 +335,7 @@ export default function App() {
                 Set PIN & Enter
               </button>
               <button
-                onClick={handleRemovePin}
+                onClick={handleSkipPin}
                 className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
               >
                 Skip — no PIN
@@ -317,7 +362,7 @@ export default function App() {
                 Unlock
               </button>
               <button
-                onClick={handleRemovePin}
+                onClick={handleForgotPin}
                 className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
               >
                 Forgot PIN? Reset
@@ -391,17 +436,23 @@ export default function App() {
     setShowNewHabit(false);
   };
 
-  const cycleHabitStatus = (id, currentStatus) => {
+  const cycleHabitStatus = (id) => {
+    const today = todayISO();
     const nextMap = { '-': '✓', '✓': '✗', '✗': '-' };
-    const next = nextMap[currentStatus] || '-';
-    let updatedTag = 'default';
-    if (next === '✓') updatedTag = 'completed';
-    if (next === '✗') updatedTag = 'missed';
     setData(prev => ({
       ...prev,
-      habits: prev.habits.map(item => 
-        item.id === id ? { ...item, status: next, tag: updatedTag } : item
-      )
+      habits: prev.habits.map(item => {
+        if (item.id !== id) return item;
+        const completions = { ...(item.completions || {}) };
+        const cur = completions[today] || '-';
+        const next = nextMap[cur] || '-';
+        if (next === '-') delete completions[today];
+        else completions[today] = next;
+        let updatedTag = 'default';
+        if (next === '✓') updatedTag = 'completed';
+        if (next === '✗') updatedTag = 'missed';
+        return { ...item, completions, tag: updatedTag };
+      })
     }));
   };
 
@@ -501,28 +552,14 @@ export default function App() {
       ];
     }
     
-    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = '\ufeff' + [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  // Weekly stats
-  const dsaTotal = data.dsa.reduce((sum, i) => sum + (parseInt(i.problems) || 0), 0);
-  const pyqTotal = data.gate.reduce((sum, i) => sum + (parseInt(i.pyq) || 0), 0);
-  const habitsDone = data.habits.filter(h => h.status === '✓').length;
-  const deepWorkMins = data.deepWork.reduce((sum, i) => sum + (parseInt(i.actual) || 0), 0);
-  const weeklyStats = {
-    dsaTotal, 
-    pyqTotal, 
-    habitsDone,
-    deepWorkMins,
-    distractions: data.antiDmn.length,
-    outputs: data.oneThing.length
   };
 
   // Calendar helpers
@@ -537,20 +574,29 @@ export default function App() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const parseSelectedDate = (dateStr) => {
-    if (!dateStr) return null;
-    const parts = dateStr.split(' ');
-    if (parts.length !== 2) return null;
-    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[0]);
-    const day = parseInt(parts[1], 10);
-    if (monthIdx === -1 || isNaN(day)) return null;
-    return { year: calendarYear, month: monthIdx, day };
+  const toISODate = (year, month, day) => {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+
+  const isoToYMD = (iso) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return { year: y, month: m - 1, day: d };
+  };
+
+  const formatDisplayDate = (iso) => {
+    const { year, month, day } = isoToYMD(iso);
+    return new Date(year, month, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const todayISO = () => {
+    const d = new Date();
+    return toISODate(d.getFullYear(), d.getMonth(), d.getDate());
   };
 
   const getDueHabitsForSelectedDate = () => {
-    const parsed = parseSelectedDate(selectedDate);
-    if (!parsed) return [];
-    return data.habits.filter(h => isHabitDueOnDate(h, parsed.year, parsed.month, parsed.day));
+    if (!selectedDate) return [];
+    const { year, month, day } = isoToYMD(selectedDate);
+    return data.habits.filter(h => isHabitDueOnDate(h, year, month, day));
   };
 
   const isHabitDueOnDate = (habit, year, month, day) => {
@@ -563,21 +609,44 @@ export default function App() {
     return days.includes(dow);
   };
 
-  const getEntriesForDate = (dateStr) => {
+  const getEntriesForDate = (isoDate) => {
+    const { year, month, day } = isoToYMD(isoDate);
+    const textDate = formatMonthDay(year, month, day);
     const entries = [];
-    data.habits.forEach(h => { if (h.date === dateStr) entries.push({ type: 'Habit', text: h.habit }); });
-    data.deepWork.forEach(d => { if (d.date === dateStr) entries.push({ type: 'Deep Work', text: d.task }); });
-    data.oneThing.forEach(o => { if (o.date === dateStr) entries.push({ type: 'Output', text: o.moved }); });
-    data.outputLog.forEach(o => { if (o.date === dateStr) entries.push({ type: 'Output Log', text: `${o.category}: ${o.quantity}` }); });
-    data.antiDmn.forEach(a => { if (a.date === dateStr) entries.push({ type: 'DMN', text: a.trigger }); });
-    data.realityCheck.forEach(r => { if (r.date === dateStr) entries.push({ type: 'Reality Check', text: `Learned: ${r.learned || '-'} | Built: ${r.built || '-'}` }); });
+    data.deepWork.forEach(d => { if (d.date === textDate) entries.push({ type: 'Deep Work', text: d.task }); });
+    data.oneThing.forEach(o => { if (o.date === textDate) entries.push({ type: 'Output', text: o.moved }); });
+    data.outputLog.forEach(o => { if (o.date === textDate) entries.push({ type: 'Output Log', text: `${o.category}: ${o.quantity}` }); });
+    data.antiDmn.forEach(a => { if (a.date === textDate) entries.push({ type: 'DMN', text: a.trigger }); });
+    data.realityCheck.forEach(r => { if (r.date === textDate) entries.push({ type: 'Reality Check', text: `Learned: ${r.learned || '-'} | Built: ${r.built || '-'}` }); });
+    data.habits.forEach(h => {
+      if (h.completions && h.completions[isoDate]) {
+        entries.push({ type: 'Habit', text: `${h.habit} (${h.completions[isoDate]})` });
+      }
+    });
     return entries;
   };
 
   const hasEntriesOnDay = (year, month, day) => {
-    const dateStr = formatMonthDay(year, month, day);
-    if (getEntriesForDate(dateStr).length > 0) return true;
+    const isoDate = toISODate(year, month, day);
+    if (getEntriesForDate(isoDate).length > 0) return true;
     return data.habits.some(h => isHabitDueOnDate(h, year, month, day));
+  };
+
+  // Weekly stats (depends on calendar helpers)
+  const dsaTotal = data.dsa.reduce((sum, i) => sum + (parseInt(i.problems) || 0), 0);
+  const pyqTotal = data.gate.reduce((sum, i) => sum + (parseInt(i.pyq) || 0), 0);
+  const habitsDone = (() => {
+    const todayStr = todayISO();
+    return data.habits.filter(h => h.completions && h.completions[todayStr] === '✓').length;
+  })();
+  const deepWorkMins = data.deepWork.reduce((sum, i) => sum + (parseInt(i.actual) || 0), 0);
+  const weeklyStats = {
+    dsaTotal,
+    pyqTotal,
+    habitsDone,
+    deepWorkMins,
+    distractions: data.antiDmn.length,
+    outputs: data.oneThing.length
   };
 
   // --- RENDERERS ---
@@ -633,14 +702,14 @@ export default function App() {
           ))}
           {Array.from({ length: getDaysInMonth(calendarYear, calendarMonth) }).map((_, i) => {
             const day = i + 1;
-            const dateStr = formatMonthDay(calendarYear, calendarMonth, day);
+            const isoDate = toISODate(calendarYear, calendarMonth, day);
             const hasEntries = hasEntriesOnDay(calendarYear, calendarMonth, day);
-            const isSelected = selectedDate === dateStr;
+            const isSelected = selectedDate === isoDate;
             const isToday = new Date().getDate() === day && new Date().getMonth() === calendarMonth && new Date().getFullYear() === calendarYear;
             return (
               <button
                 key={day}
-                onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                onClick={() => setSelectedDate(isSelected ? null : isoDate)}
                 className={`aspect-square rounded-lg flex flex-col items-center justify-center text-sm relative transition-all touch-target ${
                   isSelected
                     ? 'bg-blue-500 text-white font-bold shadow-md shadow-blue-500/20'
@@ -663,17 +732,26 @@ export default function App() {
         {/* Selected Date Entries */}
         {selectedDate && (
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
-            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Entries for {selectedDate}</h3>
+            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Entries for {formatDisplayDate(selectedDate)}</h3>
             {getEntriesForDate(selectedDate).length === 0 && getDueHabitsForSelectedDate().length === 0 ? (
               <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No entries logged for this day.</p>
             ) : (
               <div className="space-y-1.5">
-                {getDueHabitsForSelectedDate().map((h, idx) => (
-                  <div key={`due-${idx}`} className="flex items-start gap-2 text-xs">
-                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium shrink-0">Due</span>
-                    <span className="text-gray-700 dark:text-gray-300">{h.habit}</span>
-                  </div>
-                ))}
+                {getDueHabitsForSelectedDate().map((h, idx) => {
+                  const completed = h.completions && h.completions[selectedDate];
+                  return (
+                    <div key={`due-${idx}`} className="flex items-start gap-2 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded font-medium shrink-0 ${
+                        completed === '✓' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                        : completed === '✗' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                        : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                      }`}>
+                        {completed || 'Due'}
+                      </span>
+                      <span className="text-gray-700 dark:text-gray-300">{h.habit}</span>
+                    </div>
+                  );
+                })}
                 {getEntriesForDate(selectedDate).map((entry, idx) => (
                   <div key={idx} className="flex items-start gap-2 text-xs">
                     <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-medium shrink-0">{entry.type}</span>
@@ -706,6 +784,8 @@ export default function App() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800/50">
               {data.habits.map((h) => {
+                const todayStr = todayISO();
+                const todayStatus = h.completions?.[todayStr] || '-';
                 const statusStyles = {
                   '✓': 'bg-green-500 hover:bg-green-600 text-white shadow-sm shadow-green-500/20',
                   '✗': 'bg-red-500 hover:bg-red-600 text-white shadow-sm shadow-red-500/20',
@@ -726,11 +806,12 @@ export default function App() {
                       )}
                     </td>
                     <td className="p-3 text-center">
-                      <button 
-                        onClick={() => cycleHabitStatus(h.id, h.status)}
-                        className={`inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-lg font-bold transition-all duration-200 touch-target ${statusStyles[h.status || '-']}`}
+                      <button
+                        onClick={() => cycleHabitStatus(h.id)}
+                        className={`inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-lg font-bold transition-all duration-200 touch-target ${statusStyles[todayStatus]}`}
+                        title="Cycle today's status"
                       >
-                        {h.status || '-'}
+                        {todayStatus}
                       </button>
                     </td>
                     <td className="p-3 hidden sm:table-cell">
@@ -791,8 +872,8 @@ export default function App() {
                 <tr key={dw.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 group">
                   <td className="p-3"><EditableCell value={dw.date} placeholder="Date" onChange={(v) => updateItem('deepWork', dw.id, 'date', v)} /></td>
                   <td className="p-3"><EditableCell value={dw.task} placeholder="Focus Block Subject" onChange={(v) => updateItem('deepWork', dw.id, 'task', v)} /></td>
-                  <td className="p-3"><EditableCell value={dw.planned} placeholder="Min" type="number" onChange={(v) => updateItem('deepWork', dw.id, 'planned', v)} /></td>
-                  <td className="p-3"><EditableCell value={dw.actual} placeholder="Min" type="number" onChange={(v) => updateItem('deepWork', dw.id, 'actual', v)} /></td>
+                  <td className="p-3"><EditableCell value={dw.planned} placeholder="Min" type="text" inputMode="numeric" onChange={(v) => updateItem('deepWork', dw.id, 'planned', v)} /></td>
+                  <td className="p-3"><EditableCell value={dw.actual} placeholder="Min" type="text" inputMode="numeric" onChange={(v) => updateItem('deepWork', dw.id, 'actual', v)} /></td>
                   <td className="p-3"><EditableCell value={dw.focus} placeholder="x/10" onChange={(v) => updateItem('deepWork', dw.id, 'focus', v)} /></td>
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-1">
@@ -901,7 +982,7 @@ export default function App() {
               {data.dsa.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 group">
                   <td className="p-3"><EditableCell value={item.topic} placeholder="e.g. Graph BFS" onChange={(v) => updateItem('dsa', item.id, 'topic', v)} /></td>
-                  <td className="p-3"><EditableCell value={item.problems} placeholder="Count" type="number" onChange={(v) => updateItem('dsa', item.id, 'problems', v)} /></td>
+                  <td className="p-3"><EditableCell value={item.problems} placeholder="Count" type="text" inputMode="numeric" onChange={(v) => updateItem('dsa', item.id, 'problems', v)} /></td>
                   <td className="p-3"><EditableCell value={item.weakness} placeholder="e.g. Backtracking base case" onChange={(v) => updateItem('dsa', item.id, 'weakness', v)} /></td>
                   <td className="p-3"><Tag value={item.tag} editable onChange={(v) => updateItem('dsa', item.id, 'tag', v)} /></td>
                   <td className="p-3 text-center">
@@ -956,7 +1037,7 @@ export default function App() {
                 <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 group">
                   <td className="p-3"><EditableCell value={item.subject} placeholder="e.g. Operating Systems" onChange={(v) => updateItem('gate', item.id, 'subject', v)} /></td>
                   <td className="p-3"><EditableCell value={item.theory} placeholder="e.g. 80%" onChange={(v) => updateItem('gate', item.id, 'theory', v)} /></td>
-                  <td className="p-3"><EditableCell value={item.pyq} placeholder="Qty" type="number" onChange={(v) => updateItem('gate', item.id, 'pyq', v)} /></td>
+                  <td className="p-3"><EditableCell value={item.pyq} placeholder="Qty" type="text" inputMode="numeric" onChange={(v) => updateItem('gate', item.id, 'pyq', v)} /></td>
                   <td className="p-3"><EditableCell value={item.confidence} placeholder="x/10" onChange={(v) => updateItem('gate', item.id, 'confidence', v)} /></td>
                   <td className="p-3"><Tag value={item.tag} editable onChange={(v) => updateItem('gate', item.id, 'tag', v)} /></td>
                   <td className="p-3 text-center">
@@ -1227,16 +1308,21 @@ export default function App() {
 
     const deepWorkMins = weeklyStats.deepWorkMins;
     const learningHours = Math.round(deepWorkMins / 60 * 10) / 10;
-    const consumptionRatio = totalOutputs > 0 && learningHours > 0
+    const outputsPerHour = learningHours > 0
       ? Math.round((totalOutputs / learningHours) * 100) / 100
       : 0;
+
+    const outputCountColor = totalOutputs >= 5
+      ? 'text-green-600 dark:text-green-400'
+      : totalOutputs >= 1
+      ? 'text-amber-600 dark:text-amber-400'
+      : 'text-red-600 dark:text-red-400';
 
     const warnings = [];
     if (learningHours > 10 && totalOutputs < 3) {
       warnings.push({ type: 'critical', text: 'High Consumption / Low Production', detail: `${learningHours}h learning but only ${totalOutputs} outputs logged` });
     }
-    const recentOutputs = data.outputLog.length;
-    if (recentOutputs === 0) {
+    if (totalOutputs === 0) {
       warnings.push({ type: 'warning', text: 'No outputs logged yet', detail: 'Start logging outputs to track momentum' });
     }
     const dsaCount = data.dsa.reduce((s, i) => s + (parseInt(i.problems) || 0), 0);
@@ -1282,18 +1368,16 @@ export default function App() {
               <span className="text-2xl font-bold text-orange-600 dark:text-orange-400">{learningHours}h</span>
             </div>
             <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 text-center">
-              <span className="text-xs text-gray-400 font-medium block mb-1">Output Ratio</span>
-              <span className={`text-2xl font-bold ${consumptionRatio >= 1 ? 'text-green-600 dark:text-green-400' : consumptionRatio >= 0.5 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
-                {consumptionRatio}
-              </span>
-              <span className="text-xs text-gray-400 block">outputs per hour</span>
+              <span className="text-xs text-gray-400 font-medium block mb-1">Total Outputs</span>
+              <span className={`text-2xl font-bold ${outputCountColor}`}>{totalOutputs}</span>
+              <span className="text-xs text-gray-400 block">{outputsPerHour} per hour</span>
             </div>
             <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 text-center">
               <span className="text-xs text-gray-400 font-medium block mb-1">Projects Finished</span>
               <span className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">{projectFinished}</span>
             </div>
           </div>
-          {consumptionRatio > 0 && consumptionRatio < 0.5 && (
+          {learningHours > 0 && totalOutputs > 0 && outputsPerHour < 0.5 && (
             <p className="mt-3 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2.5 rounded-lg">
               ⚠️ Learning outweighing implementation. Convert hours into outputs.
             </p>
@@ -1998,16 +2082,16 @@ export default function App() {
               >
                 <RefreshCw size={13} /> Clear Slate
               </button>
-              <button 
-                onClick={() => { setIsLocked(true); setPinInput(''); }}
+              <button
+                onClick={() => { setPinStatus('locked'); setPinInput(''); }}
                 className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg bg-white dark:bg-gray-900 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 title="Lock dashboard"
               >
                 🔒 Lock
               </button>
               {localStorage.getItem(PIN_KEY) && (
-                <button 
-                  onClick={() => { localStorage.removeItem(PIN_KEY); setIsSettingPin(true); setIsLocked(true); setPinInput(''); setPinConfirm(''); }}
+                <button
+                  onClick={() => { localStorage.removeItem(PIN_KEY); setPinStatus('setup'); setPinInput(''); setPinConfirm(''); }}
                   className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg bg-white dark:bg-gray-900 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                   title="Change PIN"
                 >
