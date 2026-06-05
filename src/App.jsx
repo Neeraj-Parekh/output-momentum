@@ -448,10 +448,7 @@ export default function App() {
         const next = nextMap[cur] || '-';
         if (next === '-') delete completions[today];
         else completions[today] = next;
-        let updatedTag = 'default';
-        if (next === '✓') updatedTag = 'completed';
-        if (next === '✗') updatedTag = 'missed';
-        return { ...item, completions, tag: updatedTag };
+        return { ...item, completions };
       })
     }));
   };
@@ -769,7 +766,10 @@ export default function App() {
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-base sm:text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Section A — Daily Non-Negotiables</h2>
-            <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">Tap status to cycle through states: (-) Undone, (✓) Success, (✗) Failed</p>
+            <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">
+              <span className="font-semibold text-gray-500 dark:text-gray-400">Name + frequency are carried forward.</span>
+              <span className="hidden sm:inline"> Status applies to <span className="font-semibold text-gray-600 dark:text-gray-300">today only</span> — each day is a fresh log.</span>
+            </p>
           </div>
         </div>
         <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
@@ -777,7 +777,10 @@ export default function App() {
             <thead>
               <tr className="bg-gray-50/50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
                 <th className="p-3 min-w-[140px]">Habit</th>
-                <th className="p-3 w-16 text-center">Status</th>
+                <th className="p-3 w-20 text-center">
+                  <div>Today</div>
+                  <div className="text-[8px] font-normal normal-case text-gray-400 mt-0.5">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                </th>
                 <th className="p-3 w-20 hidden sm:table-cell">Tag</th>
                 <th className="p-3 w-12 text-center">Actions</th>
               </tr>
@@ -791,6 +794,17 @@ export default function App() {
                   '✗': 'bg-red-500 hover:bg-red-600 text-white shadow-sm shadow-red-500/20',
                   '-': 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'
                 };
+                const weekDays = Array.from({ length: 7 }).map((_, i) => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - (6 - i));
+                  return d;
+                });
+                const weekStrip = weekDays.map(d => {
+                  const iso = toISODate(d.getFullYear(), d.getMonth(), d.getDate());
+                  return { d, iso, status: h.completions?.[iso] || null };
+                });
+                const weekDone = weekStrip.filter(s => s.status === '✓').length;
+                const weekMissed = weekStrip.filter(s => s.status === '✗').length;
                 return (
                   <tr key={h.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors group">
                     <td className="p-3">
@@ -804,12 +818,38 @@ export default function App() {
                           {h.endDate ? ` · until ${h.endDate}` : (h.startDate ? ` · from ${h.startDate}` : '')}
                         </div>
                       )}
+                      <div className="flex items-center gap-1 mt-2" title="Last 7 days (oldest → today)">
+                        {weekStrip.map((s) => {
+                          const isToday = s.iso === todayStr;
+                          return (
+                            <div
+                              key={s.iso}
+                              className={`flex flex-col items-center ${isToday ? 'opacity-100' : 'opacity-90'}`}
+                              title={`${s.d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${s.status || '—'}`}
+                            >
+                              <div className={`w-3 h-3 rounded-sm ${
+                                s.status === '✓' ? 'bg-green-500'
+                                : s.status === '✗' ? 'bg-red-500'
+                                : 'bg-gray-200 dark:bg-gray-800'
+                              } ${isToday ? 'ring-1 ring-blue-500 ring-offset-1 ring-offset-white dark:ring-offset-gray-900' : ''}`} />
+                              <span className={`text-[8px] mt-0.5 font-medium ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
+                                {s.d.toLocaleDateString('en-US', { weekday: 'narrow' })}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-2 font-semibold">
+                          {weekDone}
+                          <span className="text-gray-400 dark:text-gray-600 font-normal">/7</span>
+                          {weekMissed > 0 && <span className="text-red-500 dark:text-red-400 ml-1.5">·{weekMissed}✗</span>}
+                        </span>
+                      </div>
                     </td>
                     <td className="p-3 text-center">
                       <button
                         onClick={() => cycleHabitStatus(h.id)}
                         className={`inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-lg font-bold transition-all duration-200 touch-target ${statusStyles[todayStatus]}`}
-                        title="Cycle today's status"
+                        title={`Today (${todayStr}): tap to cycle status`}
                       >
                         {todayStatus}
                       </button>
@@ -819,15 +859,15 @@ export default function App() {
                     </td>
                     <td className="p-3 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button 
-                          onClick={() => setSelectedRecord({ section: 'habits', data: h })} 
+                        <button
+                          onClick={() => setSelectedRecord({ section: 'habits', data: h })}
                           className="p-1.5 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 rounded-lg transition-colors"
                           title="View Comments & Links"
                         >
                           <Maximize2 size={15} />
                         </button>
-                        <button 
-                          onClick={() => deleteItem('habits', h.id)} 
+                        <button
+                          onClick={() => deleteItem('habits', h.id)}
                           className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-colors sm:opacity-0 sm:group-hover:opacity-100 opacity-100"
                           title="Delete"
                         >
