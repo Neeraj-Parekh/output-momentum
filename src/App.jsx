@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Download, Maximize2, X, Plus, MessageSquare, AlertTriangle, 
+import {
+  Download, Maximize2, X, Plus, MessageSquare, AlertTriangle,
   Moon, Sun, BarChart3, Trash2, RefreshCw, ChevronRight,
-  ExternalLink
+  ExternalLink, Bell, BellOff, Calendar, Smartphone
 } from 'lucide-react';
 
 // --- CONFIG ---
@@ -135,6 +135,14 @@ export default function App() {
   });
   const [newHabitEndDate, setNewHabitEndDate] = useState('');
 
+  // PWA / Notifications
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(() => {
+    if (typeof Notification !== 'undefined') return Notification.permission;
+    return 'default';
+  });
+
   // Load Main Data
   const [data, setData] = useState(() => {
     try {
@@ -194,6 +202,100 @@ export default function App() {
       window.removeEventListener('pagehide', flush);
     };
   }, [data]);
+
+  // PWA: capture install prompt
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  // PWA: check push subscription status on load
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    navigator.serviceWorker.ready.then((reg) => {
+      reg.pushManager.getSubscription().then((sub) => {
+        setIsSubscribed(!!sub);
+      }).catch(() => {});
+    }).catch(() => {});
+  }, []);
+
+  // Notifications: check permissions periodically
+  useEffect(() => {
+    const check = () => {
+      if (typeof Notification !== 'undefined') {
+        setNotifPermission(Notification.permission);
+      }
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // PWA handlers
+  const handleInstall = async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    if (outcome === 'accepted') setDeferredInstallPrompt(null);
+  };
+
+  const handleEnableNotifications = async () => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+    if (perm === 'granted') {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: null // Server will use VAPID keys
+        });
+        await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: sub.toJSON(), preferences: { morning: true, evening: true } })
+        });
+        setIsSubscribed(true);
+    } catch (e) {
+      // Subscription failed — likely VAPID keys not configured yet
+      void e;
+    }
+    }
+  };
+
+  const handleDisableNotifications = async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch('/api/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint })
+        });
+        await sub.unsubscribe();
+      }
+    } catch { /* best-effort unsubscribe */ }
+    setIsSubscribed(false);
+  };
+
+  const handleCalendarReminder = () => {
+    const now = new Date();
+    const fmt = (h, m) => {
+      const d = new Date(now);
+      d.setHours(h, m, 0, 0);
+      return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    };
+    const title = encodeURIComponent('Dashboard Check-in');
+    const details = encodeURIComponent('Open https://output-momentum.vercel.app/ and log your habits.');
+    const dates = `${fmt(8, 0)}/${fmt(8, 15)},${fmt(21, 0)}/${fmt(21, 15)}`;
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&dates=${dates}&recur=RRULE:FREQ=DAILY`;
+    window.open(url, '_blank', 'noopener');
+  };
 
   // Exports
   const handleExportJSON = () => {
@@ -645,6 +747,16 @@ export default function App() {
     distractions: data.antiDmn.length,
     outputs: data.oneThing.length
   };
+
+  // Habits pending check (depends on calendar helpers)
+  const todayDateStr = todayISO();
+  const dueHabitsToday = data.habits.filter(h => {
+    if (!h.frequency && !h.days) return false;
+    const now = new Date();
+    return isHabitDueOnDate(h, now.getFullYear(), now.getMonth(), now.getDate());
+  });
+  const uncompletedToday = dueHabitsToday.filter(h => !h.completions || !h.completions[todayDateStr]);
+  const habitsPending = uncompletedToday.length > 0;
 
   // --- RENDERERS ---
 
@@ -2138,9 +2250,85 @@ export default function App() {
                   🔄 PIN
                 </button>
               )}
+              <button
+                onClick={handleCalendarReminder}
+                className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg bg-white dark:bg-gray-900 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="Add daily calendar reminder (8 AM + 9 PM)"
+              >
+                <Calendar size={13} /> Remind
+              </button>
+              {'Notification' in window && (
+                <button
+                  onClick={isSubscribed ? handleDisableNotifications : handleEnableNotifications}
+                  className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition-colors ${
+                    isSubscribed
+                      ? 'border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30'
+                      : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                  title={isSubscribed ? 'Disable push notifications' : 'Enable push notifications'}
+                >
+                  {isSubscribed ? <BellOff size={13} /> : <Bell size={13} />}
+                  {isSubscribed ? 'Alerts On' : 'Alerts'}
+                </button>
+              )}
             </div>
             <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileSelected} className="hidden" />
           </header>
+
+          {/* PWA Install Banner */}
+          {deferredInstallPrompt && (
+            <div className="mb-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-xl p-4 flex items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-center gap-3">
+                <Smartphone className="text-blue-500 shrink-0" size={18} />
+                <div>
+                  <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Install Dashboard</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">Add to home screen for one-tap access</p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={handleInstall} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors">Install</button>
+                <button onClick={() => setDeferredInstallPrompt(null)} className="px-2 py-1.5 text-blue-400 hover:text-blue-600 text-xs transition-colors">✕</button>
+              </div>
+            </div>
+          )}
+
+          {/* Notification Permission Prompt */}
+          {notifPermission === 'default' && 'Notification' in window && (
+            <div className="mb-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-4 flex items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-center gap-3">
+                <Bell className="text-amber-500 shrink-0" size={18} />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Enable Daily Reminders</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">Get notified at 8 AM and 9 PM to log your habits</p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={handleEnableNotifications} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors">Enable</button>
+                <button onClick={() => setNotifPermission('denied')} className="px-2 py-1.5 text-amber-400 hover:text-amber-600 text-xs transition-colors">✕</button>
+              </div>
+            </div>
+          )}
+
+          {/* Habits Pending Banner */}
+          {habitsPending && activeTab === 'execution' && (
+            <div className="mb-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-900/40 rounded-xl p-4 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="text-orange-500 shrink-0 mt-0.5" size={16} />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-orange-800 dark:text-orange-300">
+                    {uncompletedToday.length} habit{uncompletedToday.length !== 1 ? 's' : ''} pending today
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {uncompletedToday.map((h) => (
+                      <span key={h.id} className="px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded text-xs font-medium">
+                        {h.habit || 'Unnamed'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Navigation System */}
           <nav className="flex gap-3 sm:gap-4 mb-6 sm:mb-8 border-b border-gray-100 dark:border-gray-800/85 overflow-x-auto scrollbar-none pb-1">
